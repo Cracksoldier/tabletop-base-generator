@@ -36,7 +36,9 @@ body {
   overflow-y: auto;
   background: var(--panel);
   border-right: 1px solid var(--border);
-  padding: 20px 22px 26px;
+  /* top padding lives on the sticky header: a negative margin there would
+     offset the stuck position, which tracks the margin box */
+  padding: 0 22px 26px;
 }
 
 #sidebar::-webkit-scrollbar {
@@ -74,6 +76,17 @@ body {
 
 #viewport canvas {
   display: block;
+}
+
+#sidebar header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* span the sidebar's horizontal padding so content can't peek around it */
+  margin: 0 -22px;
+  padding: 20px 22px 14px;
+  background: var(--panel);
+  box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.7);
 }
 
 h1 {
