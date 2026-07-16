@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tabletop Base Generator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header>
+        <h1>Tabletop Base Generator</h1>
+        <p class="subtitle">Design 3D-printable miniature bases and export them as STL.</p>
+      </header>
+
+      <section>
+        <label class="section-label" for="preset">Preset</label>
+        <select id="preset">
+          <option value="" selected>Custom&hellip;</option>
+          <optgroup label="Round">
+            <option value="round:25">25 mm round</option>
+            <option value="round:28.5">28.5 mm round</option>
+            <option value="round:32">32 mm round</option>
+            <option value="round:40">40 mm round</option>
+            <option value="round:50">50 mm round</option>
+            <option value="round:60">60 mm round</option>
+            <option value="round:80">80 mm round</option>
+            <option value="round:100">100 mm round</option>
+          </optgroup>
+          <optgroup label="Oval">
+            <option value="ellipse:60x35">60 &times; 35 mm oval</option>
+            <option value="ellipse:75x42">75 &times; 42 mm oval</option>
+            <option value="ellipse:90x52">90 &times; 52 mm oval</option>
+            <option value="ellipse:105x70">105 &times; 70 mm oval</option>
+            <option value="ellipse:120x92">120 &times; 92 mm oval</option>
+          </optgroup>
+          <optgroup label="Square">
+            <option value="square:20">20 mm square</option>
+            <option value="square:25">25 mm square</option>
+            <option value="square:40">40 mm square</option>
+            <option value="square:50">50 mm square</option>
+          </optgroup>
+        </select>
+      </section>
+
+      <section>
+        <h2>Shape</h2>
+        <div class="segmented" role="radiogroup" aria-label="Base shape">
+          <label><input type="radio" name="shape" value="round" checked><span>Round</span></label>
+          <label><input type="radio" name="shape" value="ellipse"><span>Oval</span></label>
+          <label><input type="radio" name="shape" value="square"><span>Square</span></label>
+        </div>
+        <div class="field" data-shape="round">
+          <label for="diameter">Diameter (mm)</label>
+          <input type="number" id="diameter" value="32" min="5" max="300" step="0.1">
+        </div>
+        <div class="field" data-shape="ellipse" hidden>
+          <label for="width">Width (mm)</label>
+          <input type="number" id="width" value="60" min="5" max="300" step="0.1">
+        </div>
+        <div class="field" data-shape="ellipse" hidden>
+          <label for="depth">Depth (mm)</label>
+          <input type="number" id="depth" value="35" min="5" max="300" step="0.1">
+        </div>
+        <div class="field" data-shape="square" hidden>
+          <label for="side">Side length (mm)</label>
+          <input type="number" id="side" value="25" min="5" max="300" step="0.1">
+        </div>
+        <div class="field">
+          <label for="height">Height (mm)</label>
+          <input type="number" id="height" value="4" min="1" max="50" step="0.1">
+        </div>
+      </section>
+
+      <section>
+        <h2>Top bevel</h2>
+        <label class="toggle">
+          <input type="checkbox" id="bevel-enabled" checked>
+          <span>Bevel the top edge</span>
+        </label>
+        <div class="field">
+          <label for="bevel-size">Bevel size (mm)</label>
+          <input type="number" id="bevel-size" value="1" min="0.1" max="25" step="0.1">
+        </div>
+      </section>
+
+      <section>
+        <h2>Magnet recess</h2>
+        <label class="toggle">
+          <input type="checkbox" id="magnet-enabled">
+          <span>Magnet hole in the bottom</span>
+        </label>
+        <div class="field">
+          <label for="magnet-diameter">Magnet diameter (mm)</label>
+          <input type="number" id="magnet-diameter" value="5" min="0.5" max="100" step="0.1" disabled>
+        </div>
+        <div class="field">
+          <label for="magnet-depth">Magnet depth (mm)</label>
+          <input type="number" id="magnet-depth" value="2" min="0.1" max="49" step="0.1" disabled>
+        </div>
+      </section>
+
+      <p id="hints" class="hints" hidden></p>
+
+      <button id="export" type="button">Download STL</button>
+      <p id="stats" class="stats"></p>
+
+      <footer>
+        Runs entirely in your browser &mdash; no data leaves your machine.
+        STL units are millimetres.
+      </footer>
+    </aside>
+    <main id="viewport"></main>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="js/geometry.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
