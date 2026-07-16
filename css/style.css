@@ -53,6 +53,12 @@ h1 {
   margin: 0 0 4px;
 }
 
+h1 .fa-solid {
+  color: var(--accent);
+  margin-right: 4px;
+  font-size: 16px;
+}
+
 .subtitle {
   margin: 0;
   font-size: 12.5px;
@@ -76,12 +82,25 @@ h2, .section-label {
   margin: 0 0 10px;
 }
 
+h2 .fa-solid,
+.section-label .fa-solid {
+  margin-right: 6px;
+  font-size: 11px;
+  width: 14px;
+  text-align: center;
+}
+
 .field {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin: 8px 0;
+}
+
+/* display:flex above beats the UA [hidden] rule, so restate it */
+.field[hidden] {
+  display: none;
 }
 
 .field label {
@@ -155,6 +174,21 @@ button:focus-visible {
   font-weight: 600;
 }
 
+.segmented input:disabled + span {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.segmented span .fa-solid {
+  font-size: 10px;
+  margin-right: 4px;
+  opacity: 0.75;
+}
+
+.segmented input:checked + span .fa-solid {
+  opacity: 1;
+}
+
 .toggle {
   display: flex;
   align-items: center;
@@ -172,7 +206,8 @@ button:focus-visible {
 
 .hints {
   margin: 14px 0 0;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 30px;
+  position: relative;
   border: 1px solid rgba(227, 179, 65, 0.4);
   border-radius: 6px;
   background: rgba(227, 179, 65, 0.08);
@@ -180,6 +215,16 @@ button:focus-visible {
   font-size: 12.5px;
   line-height: 1.5;
   white-space: pre-line;
+}
+
+/* warning icon; ::before because main.js fills #hints via textContent */
+.hints::before {
+  content: "\f071";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  position: absolute;
+  left: 10px;
+  top: 9px;
 }
 
 #export {
@@ -201,6 +246,11 @@ button:focus-visible {
   filter: brightness(1.08);
 }
 
+#export .fa-solid {
+  margin-right: 6px;
+  font-size: 13px;
+}
+
 .stats {
   margin: 10px 0 0;
   font-size: 12px;
@@ -214,6 +264,11 @@ footer {
   font-size: 11.5px;
   color: var(--muted);
   line-height: 1.5;
+}
+
+footer .fa-solid {
+  margin-right: 4px;
+  font-size: 10.5px;
 }
 
 @media (max-width: 720px) {

@@ -4,18 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tabletop Base Generator</title>
+  <link rel="stylesheet" href="vendor/fontawesome/css/fontawesome.min.css">
+  <link rel="stylesheet" href="vendor/fontawesome/css/solid.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="app">
     <aside id="sidebar">
       <header>
-        <h1>Tabletop Base Generator</h1>
+        <h1><i class="fa-solid fa-dice-d20" aria-hidden="true"></i> Tabletop Base Generator</h1>
         <p class="subtitle">Design 3D-printable miniature bases and export them as STL.</p>
       </header>
 
       <section>
-        <label class="section-label" for="preset">Preset</label>
+        <label class="section-label" for="preset"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Preset</label>
         <select id="preset">
           <option value="" selected>Custom&hellip;</option>
           <optgroup label="Round">
@@ -45,11 +47,11 @@
       </section>
 
       <section>
-        <h2>Shape</h2>
+        <h2><i class="fa-solid fa-shapes" aria-hidden="true"></i> Shape</h2>
         <div class="segmented" role="radiogroup" aria-label="Base shape">
-          <label><input type="radio" name="shape" value="round" checked><span>Round</span></label>
-          <label><input type="radio" name="shape" value="ellipse"><span>Oval</span></label>
-          <label><input type="radio" name="shape" value="square"><span>Square</span></label>
+          <label><input type="radio" name="shape" value="round" checked><span><i class="fa-solid fa-circle" aria-hidden="true"></i> Round</span></label>
+          <label><input type="radio" name="shape" value="ellipse"><span><i class="fa-solid fa-egg fa-rotate-90" aria-hidden="true"></i> Oval</span></label>
+          <label><input type="radio" name="shape" value="square"><span><i class="fa-solid fa-square" aria-hidden="true"></i> Square</span></label>
         </div>
         <div class="field" data-shape="round">
           <label for="diameter">Diameter (mm)</label>
@@ -74,11 +76,15 @@
       </section>
 
       <section>
-        <h2>Top bevel</h2>
+        <h2><i class="fa-solid fa-border-top-left" aria-hidden="true"></i> Top bevel</h2>
         <label class="toggle">
           <input type="checkbox" id="bevel-enabled" checked>
           <span>Bevel the top edge</span>
         </label>
+        <div class="segmented" role="radiogroup" aria-label="Bevel style">
+          <label><input type="radio" name="bevel-type" value="flat" checked><span>Flat</span></label>
+          <label><input type="radio" name="bevel-type" value="round"><span>Round</span></label>
+        </div>
         <div class="field">
           <label for="bevel-size">Bevel size (mm)</label>
           <input type="number" id="bevel-size" value="1" min="0.1" max="25" step="0.1">
@@ -86,7 +92,7 @@
       </section>
 
       <section>
-        <h2>Magnet recess</h2>
+        <h2><i class="fa-solid fa-magnet" aria-hidden="true"></i> Magnet recess</h2>
         <label class="toggle">
           <input type="checkbox" id="magnet-enabled">
           <span>Magnet hole in the bottom</span>
@@ -99,14 +105,23 @@
           <label for="magnet-depth">Magnet depth (mm)</label>
           <input type="number" id="magnet-depth" value="2" min="0.1" max="49" step="0.1" disabled>
         </div>
+        <div class="field">
+          <label for="magnet-offset-x">Offset X (mm)</label>
+          <input type="number" id="magnet-offset-x" value="0" min="-300" max="300" step="0.1" disabled>
+        </div>
+        <div class="field">
+          <label for="magnet-offset-y">Offset Y (mm)</label>
+          <input type="number" id="magnet-offset-y" value="0" min="-300" max="300" step="0.1" disabled>
+        </div>
       </section>
 
       <p id="hints" class="hints" hidden></p>
 
-      <button id="export" type="button">Download STL</button>
+      <button id="export" type="button"><i class="fa-solid fa-download" aria-hidden="true"></i> Download STL</button>
       <p id="stats" class="stats"></p>
 
       <footer>
+        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
         Runs entirely in your browser &mdash; no data leaves your machine.
         STL units are millimetres.
       </footer>

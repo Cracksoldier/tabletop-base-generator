@@ -15,10 +15,13 @@
     side: el('side'),
     height: el('height'),
     bevelEnabled: el('bevel-enabled'),
+    bevelTypeRadios: document.querySelectorAll('input[name="bevel-type"]'),
     bevelSize: el('bevel-size'),
     magnetEnabled: el('magnet-enabled'),
     magnetDiameter: el('magnet-diameter'),
-    magnetDepth: el('magnet-depth')
+    magnetDepth: el('magnet-depth'),
+    magnetOffsetX: el('magnet-offset-x'),
+    magnetOffsetY: el('magnet-offset-y')
   };
   var hintsEl = el('hints');
   var statsEl = el('stats');
@@ -112,6 +115,13 @@
     return 'round';
   }
 
+  function currentBevelType() {
+    for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
+      if (inputs.bevelTypeRadios[i].checked) return inputs.bevelTypeRadios[i].value;
+    }
+    return 'flat';
+  }
+
   /*
    * Read the form and produce safe, clamped parameters. Inputs are never
    * rewritten; instead every applied limit is reported as a hint.
@@ -128,7 +138,8 @@
       side: clamp(num(inputs.side, 25), 5, 300),
       height: clamp(num(inputs.height, 4), 1, 50),
       bevel: 0,
-      magnet: { enabled: false, diameter: 5, depth: 2 }
+      bevelType: currentBevelType(),
+      magnet: { enabled: false, diameter: 5, depth: 2, offsetX: 0, offsetY: 0 }
     };
 
     var minFootprint;
@@ -164,7 +175,18 @@
           hints.push('Magnet depth limited to ' + mDepth.toFixed(1) + ' mm (1 mm ceiling).');
         }
         if (mDia > 0 && mDepth > 0) {
-          p.magnet = { enabled: true, diameter: mDia, depth: mDepth };
+          p.magnet = { enabled: true, diameter: mDia, depth: mDepth, offsetX: 0, offsetY: 0 };
+          var ox = clamp(num(inputs.magnetOffsetX, 0), -300, 300);
+          var oy = clamp(num(inputs.magnetOffsetY, 0), -300, 300);
+          if (ox !== 0 || oy !== 0) {
+            var off = BaseGeometry.clampMagnetOffset(p, ox, oy, 1.5);
+            if (off.scaled) {
+              hints.push('Magnet offset limited to ' + off.x.toFixed(1) + ', ' +
+                off.y.toFixed(1) + ' mm (1.5 mm wall).');
+            }
+            p.magnet.offsetX = off.x;
+            p.magnet.offsetY = off.y;
+          }
         }
       }
     }
@@ -208,8 +230,13 @@
 
   function updateEnabledStates() {
     inputs.bevelSize.disabled = !inputs.bevelEnabled.checked;
+    for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
+      inputs.bevelTypeRadios[i].disabled = !inputs.bevelEnabled.checked;
+    }
     inputs.magnetDiameter.disabled = !inputs.magnetEnabled.checked;
     inputs.magnetDepth.disabled = !inputs.magnetEnabled.checked;
+    inputs.magnetOffsetX.disabled = !inputs.magnetEnabled.checked;
+    inputs.magnetOffsetY.disabled = !inputs.magnetEnabled.checked;
   }
 
   function onAnyInput() {
@@ -221,11 +248,16 @@
   var plainInputs = [
     inputs.diameter, inputs.width, inputs.depth, inputs.side, inputs.height,
     inputs.bevelEnabled, inputs.bevelSize,
-    inputs.magnetEnabled, inputs.magnetDiameter, inputs.magnetDepth
+    inputs.magnetEnabled, inputs.magnetDiameter, inputs.magnetDepth,
+    inputs.magnetOffsetX, inputs.magnetOffsetY
   ];
   plainInputs.forEach(function (input) {
     input.addEventListener('input', onAnyInput);
   });
+
+  for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
+    inputs.bevelTypeRadios[i].addEventListener('change', onAnyInput);
+  }
 
   for (var i = 0; i < inputs.shapeRadios.length; i++) {
     inputs.shapeRadios[i].addEventListener('change', function () {
@@ -261,8 +293,13 @@
     else if (p.shape === 'ellipse') size = 'oval-' + f(p.width) + 'x' + f(p.depth) + 'mm';
     else size = 'square-' + f(p.side) + 'mm';
     var name = 'base-' + size + '-h' + f(p.height);
-    if (p.bevel > 0) name += '-b' + f(p.bevel);
-    if (p.magnet.enabled) name += '-mag' + f(p.magnet.diameter) + 'x' + f(p.magnet.depth);
+    if (p.bevel > 0) name += (p.bevelType === 'round' ? '-rb' : '-b') + f(p.bevel);
+    if (p.magnet.enabled) {
+      name += '-mag' + f(p.magnet.diameter) + 'x' + f(p.magnet.depth);
+      if (p.magnet.offsetX !== 0 || p.magnet.offsetY !== 0) {
+        name += '-off' + f(p.magnet.offsetX) + 'x' + f(p.magnet.offsetY);
+      }
+    }
     return name + '.stl';
   }
 
