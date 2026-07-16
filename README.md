@@ -68,6 +68,7 @@ No build workflow is required — the repository is served as-is.
 
 ```
 index.html            page layout and script loading order
+favicon.svg, .png     d20 tab icon (SVG + 32px PNG fallback)
 css/style.css         UI styling
 js/geometry.js        procedural mesh construction (no THREE dependency in core)
 js/exporter.js        binary STL writer + download
