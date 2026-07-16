@@ -21,7 +21,8 @@
     magnetDiameter: el('magnet-diameter'),
     magnetDepth: el('magnet-depth'),
     magnetOffsetX: el('magnet-offset-x'),
-    magnetOffsetY: el('magnet-offset-y')
+    magnetOffsetY: el('magnet-offset-y'),
+    meshColor: el('mesh-color')
   };
   var hintsEl = el('hints');
   var statsEl = el('stats');
@@ -258,6 +259,11 @@
   for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
     inputs.bevelTypeRadios[i].addEventListener('change', onAnyInput);
   }
+
+  /* Preview-only: recolor the material directly, no geometry rebuild. */
+  inputs.meshColor.addEventListener('input', function () {
+    material.color.set(inputs.meshColor.value);
+  });
 
   for (var i = 0; i < inputs.shapeRadios.length; i++) {
     inputs.shapeRadios[i].addEventListener('change', function () {
