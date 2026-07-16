@@ -39,6 +39,33 @@ body {
   padding: 20px 22px 26px;
 }
 
+#sidebar::-webkit-scrollbar {
+  width: 10px;
+}
+
+#sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--panel); /* inset the thumb from the panel edge */
+}
+
+#sidebar::-webkit-scrollbar-thumb:hover {
+  background: #3e4a63;
+}
+
+/* Firefox fallback: the standard properties disable ::-webkit-scrollbar
+   styling in Chromium, so only apply them where the pseudos don't exist */
+@supports not selector(::-webkit-scrollbar) {
+  #sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
 #viewport {
   flex: 1;
   min-width: 0;
