@@ -460,6 +460,24 @@ check('makeDisplace: white -> baseOffset + relief', Math.abs(dsp(10, 0) - 5) < 1
 const dspInv = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 0, invert: true });
 check('makeDisplace: invert flips black<->white', Math.abs(dspInv(-10, 0) - 4) < 1e-9, dspInv(-10, 0));
 
+// contrast compresses/expands around mid-gray (0.5). sbuf: x=-10 -> black(0),
+// x=10 -> white(1), x=0 -> gray(0.5). At contrast 0.5 the extremes move to
+// 0.25 and 0.75; mid-gray is the fixed point regardless of contrast.
+const dspC = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 0, contrast: 0.5 });
+check('makeDisplace: contrast<1 pulls black toward mid', Math.abs(dspC(-10, 0) - 1) < 1e-9, dspC(-10, 0));
+check('makeDisplace: contrast<1 pulls white toward mid', Math.abs(dspC(10, 0) - 3) < 1e-9, dspC(10, 0));
+check('makeDisplace: mid-gray is the contrast fixed point', Math.abs(dspC(0, 0) - 2) < 1e-9, dspC(0, 0));
+// contrast > 1 saturates: extremes clamp to [0,1] (here already at extremes)
+const dspE = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 0, contrast: 2 });
+check('makeDisplace: contrast>1 clamps within range',
+  dspE(-10, 0) >= 0 && dspE(10, 0) <= 4 && Math.abs(dspE(0, 0) - 2) < 1e-9,
+  JSON.stringify([dspE(-10, 0), dspE(10, 0), dspE(0, 0)]));
+// contrast is symmetric about 0.5, so it commutes with invert
+const dspCI = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 0, contrast: 0.5, invert: true });
+check('makeDisplace: contrast commutes with invert', Math.abs(dspCI(-10, 0) - 3) < 1e-9, dspCI(-10, 0));
+// contrast defaults to 1 (untouched) when omitted
+check('makeDisplace: contrast defaults to 1', Math.abs(dsp(0, 0) - 3) < 1e-9, dsp(0, 0));
+
 // Geometry: synthetic displace closures (no image needed)
 const flat = () => 0;
 const bump = (x, y) => 1.5 * Math.exp(-(x * x + y * y) / 40); // smooth radial hill

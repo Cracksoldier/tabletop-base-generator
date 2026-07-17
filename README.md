@@ -18,9 +18,11 @@ tabletop) miniatures and exports them as STL, ready for slicing.
   magnet recess as long as the magnet is offset clear of the slit
 - **Optional height-map terrain** on the top surface — load a grayscale image
   from disk and its brightness is projected as vertical relief (rubble, rock,
-  cracked earth …), with adjustable relief height, base offset, invert and
-  resolution. Loaded entirely in-browser (no upload); coexists with the bevel
-  and the magnet, and is mutually exclusive with the slit
+  cracked earth …), with adjustable relief height, base offset, contrast and
+  resolution (plus invert). Contrast compresses the brightness range around
+  mid-gray to tame steep, spiky transitions from high-contrast maps. Loaded
+  entirely in-browser (no upload); coexists with the bevel and the magnet, and
+  is mutually exclusive with the slit
 - **Presets** for common base sizes (25/28.5/32/40/50/60/80/100 mm round,
   60×35 … 120×92 mm oval, 20/25/40/50 mm square)
 - **Binary STL export** in millimetres, Z-up — drops straight into your slicer

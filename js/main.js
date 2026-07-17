@@ -29,6 +29,8 @@
     terrainImage: el('terrain-image'),
     terrainRelief: el('terrain-relief'),
     terrainBase: el('terrain-base'),
+    terrainContrast: el('terrain-contrast'),
+    terrainContrastValue: el('terrain-contrast-value'),
     terrainInvert: el('terrain-invert'),
     terrainResRadios: document.querySelectorAll('input[name="terrain-res"]'),
     terrainResCustom: el('terrain-res-custom'),
@@ -216,6 +218,7 @@
         var tr = footprintRadii(p);
         var relief = clamp(num(inputs.terrainRelief, 2), 0.2, 20);
         var baseOff = clamp(num(inputs.terrainBase, 0), 0, 10);
+        var contrast = clamp(num(inputs.terrainContrast, 1), 0.1, 2);
         p.terrain = {
           enabled: true,
           rings: currentTerrainRings(),
@@ -224,7 +227,7 @@
           displace: HeightMap.makeDisplace(buf, {
             rx: tr.rx, ry: tr.ry,
             reliefHeight: relief, baseOffset: baseOff,
-            invert: inputs.terrainInvert.checked
+            invert: inputs.terrainInvert.checked, contrast: contrast
           })
         };
         terrainActive = true;
@@ -377,6 +380,7 @@
     inputs.terrainImage.disabled = !terrainOn || slitOn;
     inputs.terrainRelief.disabled = !terrainOn || slitOn;
     inputs.terrainBase.disabled = !terrainOn || slitOn;
+    inputs.terrainContrast.disabled = !terrainOn || slitOn;
     inputs.terrainInvert.disabled = !terrainOn || slitOn;
     var terrainUsable = terrainOn && !slitOn;
     for (var t = 0; t < inputs.terrainResRadios.length; t++) {
@@ -402,11 +406,18 @@
     inputs.magnetOffsetX, inputs.magnetOffsetY,
     inputs.slitEnabled, inputs.slitLength, inputs.slitWidth,
     inputs.terrainEnabled, inputs.terrainRelief, inputs.terrainBase,
-    inputs.terrainInvert, inputs.terrainResCustom, inputs.terrainSegCustom
+    inputs.terrainContrast, inputs.terrainInvert,
+    inputs.terrainResCustom, inputs.terrainSegCustom
   ];
   plainInputs.forEach(function (input) {
     input.addEventListener('input', onAnyInput);
   });
+
+  /* Live-update the contrast readout beside its slider. */
+  function updateContrastReadout() {
+    inputs.terrainContrastValue.textContent = num(inputs.terrainContrast, 1).toFixed(2);
+  }
+  inputs.terrainContrast.addEventListener('input', updateContrastReadout);
 
   for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
     inputs.bevelTypeRadios[i].addEventListener('change', onAnyInput);
@@ -507,5 +518,6 @@
 
   updateShapeFields();
   updateEnabledStates();
+  updateContrastReadout();
   regenerate();
 })();

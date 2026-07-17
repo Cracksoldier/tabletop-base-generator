@@ -155,6 +155,13 @@
           <label for="terrain-base">Base offset (mm)</label>
           <input type="number" id="terrain-base" value="0" min="0" max="10" step="0.1" disabled>
         </div>
+        <div class="field">
+          <label for="terrain-contrast">Contrast</label>
+          <span class="slider">
+            <input type="range" id="terrain-contrast" value="1" min="0.1" max="2" step="0.05" disabled>
+            <output id="terrain-contrast-value">1.00</output>
+          </span>
+        </div>
         <label class="toggle">
           <input type="checkbox" id="terrain-invert" disabled>
           <span>Invert (black is high)</span>

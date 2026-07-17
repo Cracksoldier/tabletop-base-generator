@@ -47,19 +47,30 @@ window.HeightMap = (function () {
 
   /*
    * Build a pure displace(x, y) -> mm closure. Maps a mesh vertex XY over the
-   * footprint bbox [-rx, rx] x [-ry, ry] into UV, samples brightness, optionally
-   * inverts, then scales: displacement = baseOffset + brightness * reliefHeight.
-   * opts: { rx, ry, reliefHeight, baseOffset, invert }.
+   * footprint bbox [-rx, rx] x [-ry, ry] into UV, samples brightness, applies a
+   * contrast factor around mid-gray, optionally inverts, then scales:
+   * displacement = baseOffset + brightness * reliefHeight.
+   *
+   * contrast compresses (< 1) or expands (> 1) the brightness range around 0.5:
+   * b' = clamp(0.5 + (b - 0.5) * contrast). High-contrast maps push adjacent
+   * pixels to opposite extremes, which the relief turns into near-vertical
+   * spikes between neighbouring vertices; lowering contrast flattens those
+   * transitions. contrast = 1 leaves the map untouched. It is symmetric about
+   * 0.5, so it commutes with invert.
+   * opts: { rx, ry, reliefHeight, baseOffset, invert, contrast }.
    */
   function makeDisplace(buf, opts) {
     var rx = opts.rx, ry = opts.ry;
     var relief = opts.reliefHeight || 0;
     var base = opts.baseOffset || 0;
     var invert = !!opts.invert;
+    var contrast = (opts.contrast > 0) ? opts.contrast : 1;
     return function (x, y) {
       var u = (x + rx) / (2 * rx);
       var v = (y + ry) / (2 * ry);
       var b = sample(buf, u, v);
+      b = 0.5 + (b - 0.5) * contrast;
+      b = b < 0 ? 0 : (b > 1 ? 1 : b);
       if (invert) b = 1 - b;
       return base + b * relief;
     };
