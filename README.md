@@ -81,10 +81,12 @@ No build workflow is required — the repository is served as-is.
   concentric rings (the shared angle list × N radial steps) whose outermost
   ring is the existing top outline reused verbatim, so the relief welds
   bit-identically to the wall/bevel top and the mesh stays watertight by
-  construction. Two approximations follow from the polar layout: angular
-  detail is capped at the angle-list density (96 + corners), radial detail
-  thins toward the middle, and the exact center is a single pinch vertex, so
-  the finest features right at the center are smeared. The terrain edge is
+  construction. With terrain active the shared angle list is densified in
+  step with the ring count (~4 segments per ring, up to 384) so the whole
+  mesh — walls, bevel and bottom included — gains angular detail to match the
+  radial relief. Two approximations remain from the polar layout: radial
+  detail still thins toward the middle, and the exact center is a single pinch
+  vertex, so the finest features right at the center are smeared. The terrain edge is
   pinned flush with the rim ("flat rim"), and the image is read from disk via
   a data URL (never a `file://` path, which would taint the canvas). Terrain
   and the through-slit are mutually exclusive.

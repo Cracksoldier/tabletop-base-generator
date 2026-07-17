@@ -22,10 +22,11 @@ window.BaseGeometry = (function () {
    * corner angles atan2(width, length) and their reflections, so the slit
    * loop has exact corners on every base shape.
    */
-  function buildAngleList(shape, slit) {
+  function buildAngleList(shape, slit, segments) {
+    segments = segments || SEGMENTS;
     var angles = [];
     var i;
-    for (i = 0; i < SEGMENTS; i++) angles.push(i * TAU / SEGMENTS);
+    for (i = 0; i < segments; i++) angles.push(i * TAU / segments);
     var extra = [];
     if (shape === 'square') {
       var corners = [0.25, 0.75, 1.25, 1.75];
@@ -334,6 +335,23 @@ window.BaseGeometry = (function () {
     tri(out, X[prev[v]], Y[prev[v]], z, X[next[v]], Y[next[v]], z, X[v], Y[v], z);
   }
 
+  /*
+   * Angular resolution of the shared angle list. Terrain raises it in step with
+   * the radial ring count so relief sharpens in both directions (a ring at the
+   * rim has circumference ~2*pi*R, so ~4x the ring count keeps cells roughly
+   * square there while staying a multiple of 4 for clean square-corner
+   * alignment). Floored at the default 96 and capped so the whole mesh — walls,
+   * bevel and bottom all sample this same list — stays a sane triangle count.
+   * Non-terrain builds are unchanged at SEGMENTS.
+   */
+  function segmentsFor(params) {
+    var t = params.terrain || {};
+    if (!(t.enabled && typeof t.displace === 'function' && t.rings > 0)) return SEGMENTS;
+    var s = Math.round(t.rings) * 4;
+    s = Math.max(SEGMENTS, Math.min(384, s));
+    return s - (s % 4); /* keep divisible by 4 so square corners coincide */
+  }
+
   function resolveRadii(params) {
     if (params.shape === 'round') {
       var r = params.diameter / 2;
@@ -537,9 +555,11 @@ window.BaseGeometry = (function () {
       if (sf.length > 0) slit = sf; /* same dims the UI applies — clamp is idempotent */
     }
 
+    var segments = segmentsFor(params); /* match the build's density (terrain raises it) */
+
     if (!slit) {
       if (!ox && !oy) return { x: 0, y: 0, scaled: false, pushed: false, valid: true };
-      var angles0 = buildAngleList(params.shape);
+      var angles0 = buildAngleList(params.shape, null, segments);
       var outer0 = sampleLoop(params.shape, r.rx, r.ry, angles0);
       var eff0 = magnetEffectiveOutline(params, r.rx, r.ry, bevel, angles0, outer0);
       var t0 = Math.min(1, offsetScale(outer0, eff0, angles0, hr, ox, oy, margin));
@@ -550,7 +570,7 @@ window.BaseGeometry = (function () {
     var dLen = Math.hypot(ox, oy);
     var tLow = slitExitDistance(slit.length / 2, slit.width / 2,
       hr + margin, ox / dLen, oy / dLen) / dLen;
-    var angles = buildAngleList(params.shape, slit);
+    var angles = buildAngleList(params.shape, slit, segments);
     var outer = sampleLoop(params.shape, r.rx, r.ry, angles);
     var eff = magnetEffectiveOutline(params, r.rx, r.ry, bevel, angles, outer);
     var tHigh = offsetScale(outer, eff, angles, hr, ox, oy, margin);
@@ -605,7 +625,8 @@ window.BaseGeometry = (function () {
       if (sf.length > 0.05 && sf.width > 0.05) slit = sf;
     }
 
-    var angles = buildAngleList(shape, slit);
+    var segments = segmentsFor(params);
+    var angles = buildAngleList(shape, slit, segments);
     var outer = sampleLoop(shape, rx, ry, angles);
     var slitLoop = slit ? sampleSlitLoop(slit.length / 2, slit.width / 2, angles) : null;
     var positions = [];

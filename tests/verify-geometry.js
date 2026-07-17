@@ -80,12 +80,22 @@ function analyze(positions) {
 const C96 = 0.5 * 96 * Math.sin(2 * Math.PI / 96);
 const FILLET_STEPS = 8; // mirrors geometry.js
 
-// mirrors buildAngleList: 96 uniform angles, square corner angles, and the
+// mirrors segmentsFor: terrain raises the shared angular density in step with
+// the ring count (rings*4, floored at 96, capped at 384, divisible by 4)
+function segmentsFor(p) {
+  const t = p.terrain || {};
+  if (!(t.enabled && typeof t.displace === 'function' && t.rings > 0)) return 96;
+  let s = Math.max(96, Math.min(384, Math.round(t.rings) * 4));
+  return s - (s % 4);
+}
+
+// mirrors buildAngleList: N uniform angles, square corner angles, and the
 // slit's corner angles (atan2(width, length) and reflections) when active
 function angleListFor(p) {
   const TAU = 2 * Math.PI;
+  const segments = segmentsFor(p);
   const angles = [];
-  for (let i = 0; i < 96; i++) angles.push(i * TAU / 96);
+  for (let i = 0; i < segments; i++) angles.push(i * TAU / segments);
   const extra = [];
   if (p.shape === 'square') {
     for (const c of [0.25, 0.75, 1.25, 1.75]) extra.push(c * Math.PI);
