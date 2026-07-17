@@ -478,6 +478,29 @@ check('makeDisplace: contrast commutes with invert', Math.abs(dspCI(-10, 0) - 3)
 // contrast defaults to 1 (untouched) when omitted
 check('makeDisplace: contrast defaults to 1', Math.abs(dsp(0, 0) - 3) < 1e-9, dsp(0, 0));
 
+// aspect fit ("cover" crop): a linear horizontal ramp image samples the exact
+// u coordinate, so displace(x,y) with relief 1 / base 0 returns the sampled u.
+// ramp is 6 wide x 1 tall: pixel i = 51*i, luminance i/5, so sample == u.
+const rampW = grayBuf([[0, 51, 102, 153, 204, 255]]); // imageAspect = 6
+// Matched aspect (footprint 6:1) leaves the full [0,1] u range intact.
+const dspMatch = HeightMap.makeDisplace(rampW, { rx: 30, ry: 5, reliefHeight: 1, baseOffset: 0 });
+check('makeDisplace: matched aspect keeps full u range (left)', Math.abs(dspMatch(-30, 0) - 0) < 1e-9, dspMatch(-30, 0));
+check('makeDisplace: matched aspect keeps full u range (right)', Math.abs(dspMatch(30, 0) - 1) < 1e-9, dspMatch(30, 0));
+// Wide image on a square footprint (aspect 1) crops the sides: scaleU = 1/6,
+// so u maps into a centred [5/12, 7/12] window instead of [0,1].
+const dspCropU = HeightMap.makeDisplace(rampW, { rx: 10, ry: 10, reliefHeight: 1, baseOffset: 0 });
+check('makeDisplace: wide image crops sides (center unmoved)', Math.abs(dspCropU(0, 0) - 0.5) < 1e-9, dspCropU(0, 0));
+check('makeDisplace: wide image crops sides (left edge)', Math.abs(dspCropU(-10, 0) - (0.5 - 0.5 / 6)) < 1e-9, dspCropU(-10, 0));
+check('makeDisplace: wide image crops sides (right edge)', Math.abs(dspCropU(10, 0) - (0.5 + 0.5 / 6)) < 1e-9, dspCropU(10, 0));
+// Tall image on a square footprint crops top/bottom: a vertical ramp samples v.
+// ramp 1 wide x 6 tall, top row 0 .. bottom row 255. sample flips V, so v maps
+// to 1 - value; a centred crop compresses that range to [5/12, 7/12] likewise.
+const rampV = grayBuf([[0], [51], [102], [153], [204], [255]]); // imageAspect = 1/6
+const dspCropV = HeightMap.makeDisplace(rampV, { rx: 10, ry: 10, reliefHeight: 1, baseOffset: 0 });
+check('makeDisplace: tall image crops top/bottom (center unmoved)', Math.abs(dspCropV(0, 0) - 0.5) < 1e-9, dspCropV(0, 0));
+check('makeDisplace: tall image crops top/bottom (symmetric)',
+  Math.abs((dspCropV(0, -10) + dspCropV(0, 10)) - 1) < 1e-9, JSON.stringify([dspCropV(0, -10), dspCropV(0, 10)]));
+
 // Geometry: synthetic displace closures (no image needed)
 const flat = () => 0;
 const bump = (x, y) => 1.5 * Math.exp(-(x * x + y * y) / 40); // smooth radial hill

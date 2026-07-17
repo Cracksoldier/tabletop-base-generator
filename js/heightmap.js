@@ -51,6 +51,13 @@ window.HeightMap = (function () {
    * contrast factor around mid-gray, optionally inverts, then scales:
    * displacement = baseOffset + brightness * reliefHeight.
    *
+   * Aspect fit ("cover"): the footprint bbox aspect is rx:ry, but the image is
+   * arbitrary. Mapping the full image onto a non-square footprint (an oval, or
+   * any rx != ry) would stretch it. Instead we sample a centred sub-window of
+   * the image whose aspect matches the footprint, cropping the excess of the
+   * longer image axis — so pixels keep their own aspect and nothing distorts.
+   * Round and square bases (rx == ry) with a square image are unaffected.
+   *
    * contrast compresses (< 1) or expands (> 1) the brightness range around 0.5:
    * b' = clamp(0.5 + (b - 0.5) * contrast). High-contrast maps push adjacent
    * pixels to opposite extremes, which the relief turns into near-vertical
@@ -65,9 +72,25 @@ window.HeightMap = (function () {
     var base = opts.baseOffset || 0;
     var invert = !!opts.invert;
     var contrast = (opts.contrast > 0) ? opts.contrast : 1;
+
+    /* Centred cover crop: shrink the sampled UV window on the axis that would
+       otherwise stretch. footprintAspect = rx/ry, imageAspect = w/h. */
+    var scaleU = 1, scaleV = 1;
+    if (buf.width >= 1 && buf.height >= 1 && rx > 0 && ry > 0) {
+      var footprintAspect = rx / ry;
+      var imageAspect = buf.width / buf.height;
+      if (imageAspect > footprintAspect) {
+        scaleU = footprintAspect / imageAspect; /* image too wide -> crop sides */
+      } else {
+        scaleV = imageAspect / footprintAspect; /* image too tall -> crop top/bottom */
+      }
+    }
+
     return function (x, y) {
       var u = (x + rx) / (2 * rx);
       var v = (y + ry) / (2 * ry);
+      u = 0.5 + (u - 0.5) * scaleU;
+      v = 0.5 + (v - 0.5) * scaleV;
       var b = sample(buf, u, v);
       b = 0.5 + (b - 0.5) * contrast;
       b = b < 0 ? 0 : (b > 1 ? 1 : b);
