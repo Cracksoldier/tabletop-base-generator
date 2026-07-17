@@ -76,12 +76,45 @@ function analyze(positions) {
 const C96 = 0.5 * 96 * Math.sin(2 * Math.PI / 96);
 const FILLET_STEPS = 8; // mirrors geometry.js
 
+// mirrors buildAngleList: 96 uniform angles, square corner angles, and the
+// slit's corner angles (atan2(width, length) and reflections) when active
+function angleListFor(p) {
+  const TAU = 2 * Math.PI;
+  const angles = [];
+  for (let i = 0; i < 96; i++) angles.push(i * TAU / 96);
+  const extra = [];
+  if (p.shape === 'square') {
+    for (const c of [0.25, 0.75, 1.25, 1.75]) extra.push(c * Math.PI);
+  }
+  if (p.slit && p.slit.enabled && p.slit.length > 0 && p.slit.width > 0) {
+    const ca = Math.atan2(p.slit.width, p.slit.length);
+    extra.push(ca, Math.PI - ca, Math.PI + ca, TAU - ca);
+  }
+  for (const c of extra) {
+    if (!angles.some(a => Math.abs(a - c) < 1e-9)) angles.push(c);
+  }
+  angles.sort((a, b) => a - b);
+  return angles;
+}
+
+// polygon area factor for an ellipse sampled at the angle list: A = Cang*rx*ry
+function Cang(angles) {
+  let sum = 0;
+  for (let i = 0; i < angles.length; i++) {
+    const j = (i + 1) % angles.length;
+    const d = angles[j] - angles[i] + (j === 0 ? 2 * Math.PI : 0);
+    sum += Math.sin(d);
+  }
+  return 0.5 * sum;
+}
+
 function bandVol(C, rx1, ry1, z1, rx2, ry2, z2) {
   return (z2 - z1) / 6 * C * (rx1 * ry1 + 4 * ((rx1 + rx2) / 2) * ((ry1 + ry2) / 2) + rx2 * ry2);
 }
 
-function analyticVolume(p) {
-  const C = p.shape === 'square' ? 4 : C96;
+function analyticVolume(p, magnetDropped) {
+  const Cpoly = Cang(angleListFor(p));
+  const C = p.shape === 'square' ? 4 : Cpoly;
   let rx, ry;
   if (p.shape === 'round') rx = ry = p.diameter / 2;
   else if (p.shape === 'ellipse') { rx = p.width / 2; ry = p.depth / 2; }
@@ -104,8 +137,11 @@ function analyticVolume(p) {
       v += bandVol(C, rx, ry, wallTop, rx - bevel, ry - bevel, p.height);
     }
   }
-  if (p.magnet && p.magnet.enabled) {
-    v -= C96 * Math.pow(p.magnet.diameter / 2, 2) * p.magnet.depth;
+  if (p.magnet && p.magnet.enabled && !magnetDropped) {
+    v -= Cpoly * Math.pow(p.magnet.diameter / 2, 2) * p.magnet.depth;
+  }
+  if (p.slit && p.slit.enabled && p.slit.length > 0 && p.slit.width > 0) {
+    v -= p.slit.length * p.slit.width * p.height; // sampled rectangle is exact
   }
   return v;
 }
@@ -170,6 +206,98 @@ cases.push({ name: 'deep magnet under bevel, offset to the rim',
   params: { shape: 'round', diameter: 32, height: 4, bevel: 2, bevelType: 'flat',
             magnet: { enabled: true, diameter: 5, depth: 3, offsetX: 100, offsetY: 0 } } });
 
+/* ---------- slit (cut all the way through) ---------- */
+
+// slit-only, per shape x bevel type — safe dims, so the volume is exact
+const slitDims = {
+  round: { length: 20, width: 3 },
+  ellipse: { length: 30, width: 4 },
+  square: { length: 14, width: 2 }
+};
+for (const shape of ['round', 'ellipse', 'square']) {
+  for (const bv of bevelVariants) {
+    cases.push({
+      name: shape + ' slit bevel=' + bv.label,
+      exact: true,
+      params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+                height: 4, bevel: bv.bevel, bevelType: bv.bevelType,
+                magnet: { enabled: false },
+                slit: { enabled: true, ...slitDims[shape] } }
+    });
+  }
+}
+// slit + magnet clearing the slit: the two-hole bottom cap (capWithHoles)
+const slitMagnets = {
+  round: { enabled: true, diameter: 5, depth: 2, offsetX: 0, offsetY: 6.5 },
+  ellipse: { enabled: true, diameter: 5, depth: 2, offsetX: 12, offsetY: -8 },
+  square: { enabled: true, diameter: 4, depth: 2, offsetX: 0, offsetY: 7 }
+};
+for (const shape of ['round', 'ellipse', 'square']) {
+  cases.push({
+    name: shape + ' slit + clearing offset magnet',
+    exact: true,
+    params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+              height: 4, bevel: 0, bevelType: 'flat',
+              magnet: slitMagnets[shape],
+              slit: { enabled: true, ...slitDims[shape] } }
+  });
+}
+// a centered magnet cannot clear the slit and must be dropped entirely
+cases.push({ name: 'slit + centered magnet (magnet dropped)',
+  exact: true, magnetDropped: true,
+  params: { shape: 'round', diameter: 32, height: 4, bevel: 0,
+            magnet: { enabled: true, diameter: 5, depth: 2 },
+            slit: { enabled: true, length: 20, width: 3 } } });
+// pushing this fat magnet clear of the slit would breach the wall — dropped
+cases.push({ name: 'slit + magnet with no room to clear (magnet dropped)',
+  exact: true, magnetDropped: true,
+  params: { shape: 'round', diameter: 32, height: 4, bevel: 0,
+            magnet: { enabled: true, diameter: 8, depth: 2, offsetX: 3, offsetY: 0 },
+            slit: { enabled: true, length: 20, width: 3 } } });
+// a small offset is pushed outward to the slit clearance (volume is
+// translation invariant, so it stays exact)
+cases.push({ name: 'slit + magnet pushed sideways clear of the slit',
+  exact: true,
+  params: { shape: 'round', diameter: 32, height: 4, bevel: 0,
+            magnet: { enabled: true, diameter: 5, depth: 2, offsetX: 0, offsetY: 2 },
+            slit: { enabled: true, length: 20, width: 3 } } });
+// magnet just clearing the defensive margin
+cases.push({ name: 'slit + magnet barely clearing',
+  exact: true,
+  params: { shape: 'round', diameter: 40, height: 4, bevel: 0,
+            magnet: { enabled: true, diameter: 6, depth: 2, offsetX: 0, offsetY: 7.2 },
+            slit: { enabled: true, length: 24, width: 4 } } });
+// diagonal push past the slit end exercises the corner-exit quadratic and a
+// bridge normal that differs from the offset ray
+cases.push({ name: 'slit + diagonal magnet pushed around the slit end',
+  exact: true,
+  params: { shape: 'round', diameter: 40, height: 4, bevel: 1, bevelType: 'round',
+            magnet: { enabled: true, diameter: 5, depth: 2, offsetX: 11, offsetY: 2 },
+            slit: { enabled: true, length: 20, width: 3 } } });
+// square slit in a square base: corner angles dedupe against the 45° entries
+cases.push({ name: 'square slit W=L (45-degree corner dedupe)',
+  exact: true,
+  params: { shape: 'square', side: 30, height: 4, bevel: 0,
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 8, width: 8 } } });
+// wide slit reaching toward the square corners, under a flat bevel
+cases.push({ name: 'wide slit near square corners',
+  exact: true,
+  params: { shape: 'square', side: 40, height: 4, bevel: 1, bevelType: 'flat',
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 30, width: 24 } } });
+// oversized request: the defensive clamp must land somewhere valid
+cases.push({ name: 'slit longer than the base (defensive clamp)',
+  params: { shape: 'round', diameter: 32, height: 4, bevel: 0,
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 40, width: 3 } } });
+// ellipse-skew regression: contained-with-margin yet would invert annulus
+// triangles — the clamp's explicit non-inversion conditions must catch it
+cases.push({ name: 'skewed oval slit (inversion regression, defensive clamp)',
+  params: { shape: 'ellipse', width: 105, depth: 42, height: 4, bevel: 0,
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 50.5, width: 33.5 } } });
+
 for (const c of cases) {
   const positions = BaseGeometry.buildPositions(c.params);
   const r = analyze(positions);
@@ -178,7 +306,7 @@ for (const c of cases) {
   check(c.name + ': positive volume', r.volume > 0, 'volume=' + r.volume.toFixed(3));
   check(c.name + ': horizontal facets oriented', r.badHoriz === 0, r.badHoriz + ' misoriented');
   if (c.exact) {
-    const want = analyticVolume(c.params);
+    const want = analyticVolume(c.params, c.magnetDropped);
     check(c.name + ': exact volume', Math.abs(r.volume - want) < 1e-6,
       'got ' + r.volume + ' expected ' + want);
   }
@@ -207,6 +335,58 @@ for (const shape of ['round', 'ellipse', 'square']) {
   check(shape + ': magnet offset does not change volume',
     Math.abs(v('none', 'offset') - v('none', 'centered')) < 1e-6);
 }
+
+// slit monotonicity: the through-cut removes material on every shape
+for (const shape of ['round', 'ellipse', 'square']) {
+  const plain = cases.find(c => c.name === shape + ' bevel=none magnet=off').volume;
+  const slit = cases.find(c => c.name === shape + ' slit bevel=none').volume;
+  check(shape + ': slit removes material', slit < plain,
+    slit + ' vs ' + plain);
+}
+
+// clampSlitSize: safe requests pass through, oversized ones scale back
+const slitClampParams = { shape: 'round', diameter: 32, height: 4, bevel: 0 };
+const slitSafe = BaseGeometry.clampSlitSize(slitClampParams, 20, 3, 1.5);
+check('clampSlitSize: safe slit unchanged',
+  slitSafe.scaled === false && slitSafe.length === 20 && slitSafe.width === 3,
+  JSON.stringify(slitSafe));
+const slitLong = BaseGeometry.clampSlitSize(slitClampParams, 40, 3, 1.5);
+check('clampSlitSize: oversized slit scaled back',
+  slitLong.scaled === true && slitLong.length <= 29 + 1e-9 && slitLong.length > 20,
+  JSON.stringify(slitLong));
+// the skewed-oval case: fully contained with margin, yet must come back
+// scaled because annulus triangles would invert (containment is not enough)
+const ovalParams = { shape: 'ellipse', width: 105, depth: 42, height: 4, bevel: 0 };
+const ovalSlit = BaseGeometry.clampSlitSize(ovalParams, 50.5, 33.5, 1.5);
+check('clampSlitSize: skewed oval slit scaled back', ovalSlit.scaled === true,
+  JSON.stringify(ovalSlit));
+const ovalBuilt = BaseGeometry.buildPositions({ ...ovalParams,
+  magnet: { enabled: false },
+  slit: { enabled: true, length: ovalSlit.length, width: ovalSlit.width } });
+const ovalR = analyze(ovalBuilt);
+check('clampSlitSize: clamped oval slit builds clean',
+  ovalR.badEdges === 0 && ovalR.degenerate === 0 && ovalR.badHoriz === 0 && ovalR.volume > 0,
+  JSON.stringify({ badEdges: ovalR.badEdges, degenerate: ovalR.degenerate,
+                   badHoriz: ovalR.badHoriz }));
+
+// clampMagnetOffset with an active slit: pull back, push out, or reject
+const slitMagParams = { shape: 'round', diameter: 32, height: 4, bevel: 0,
+                        magnet: { enabled: true, diameter: 5, depth: 2 },
+                        slit: { enabled: true, length: 20, width: 3 } };
+const clear = BaseGeometry.clampMagnetOffset(slitMagParams, 0, 8, 1.5);
+check('clampMagnetOffset+slit: clear offset unchanged',
+  clear.valid === true && clear.pushed === false && clear.scaled === false &&
+  clear.x === 0 && clear.y === 8, JSON.stringify(clear));
+const pushed = BaseGeometry.clampMagnetOffset(slitMagParams, 0, 2, 1.5);
+check('clampMagnetOffset+slit: near offset pushed clear',
+  pushed.valid === true && pushed.pushed === true &&
+  Math.abs(pushed.y - 5.5) < 1e-9 && pushed.x === 0, JSON.stringify(pushed));
+const centered = BaseGeometry.clampMagnetOffset(slitMagParams, 0, 0, 1.5);
+check('clampMagnetOffset+slit: centered magnet invalid', centered.valid === false,
+  JSON.stringify(centered));
+const alongSlit = BaseGeometry.clampMagnetOffset(slitMagParams, 5, 0, 1.5);
+check('clampMagnetOffset+slit: no room along the long axis',
+  alongSlit.valid === false, JSON.stringify(alongSlit));
 
 // clampMagnetOffset: safe offsets pass through untouched, unsafe ones scale back
 const clampParams = { shape: 'square', side: 60, height: 6, bevel: 0,
