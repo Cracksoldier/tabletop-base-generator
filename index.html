@@ -160,10 +160,21 @@
           <span>Invert (black is high)</span>
         </label>
         <div class="segmented" role="radiogroup" aria-label="Terrain resolution">
-          <label><input type="radio" name="terrain-res" value="12"><span>Low</span></label>
-          <label><input type="radio" name="terrain-res" value="24" checked><span>Medium</span></label>
-          <label><input type="radio" name="terrain-res" value="48"><span>High</span></label>
+          <label><input type="radio" name="terrain-res" value="12" disabled><span>Low</span></label>
+          <label><input type="radio" name="terrain-res" value="24" checked disabled><span>Medium</span></label>
+          <label><input type="radio" name="terrain-res" value="48" disabled><span>High</span></label>
+          <label><input type="radio" name="terrain-res" value="custom" disabled><span>Custom</span></label>
         </div>
+        <div class="field" id="terrain-res-custom-field" hidden>
+          <label for="terrain-res-custom">Rings (radial)</label>
+          <input type="number" id="terrain-res-custom" value="64" min="4" max="256" step="1" disabled>
+        </div>
+        <p class="note">
+          Resolution is the number of concentric rings from the centre out to
+          the rim: Low 12, Medium 24, High 48. More rings mean finer relief and
+          more triangles. Angular detail is fixed by the base outline (96
+          segments), so extra rings mainly sharpen relief along the radius.
+        </p>
       </section>
 
       <section>

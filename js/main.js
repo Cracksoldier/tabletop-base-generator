@@ -31,6 +31,8 @@
     terrainBase: el('terrain-base'),
     terrainInvert: el('terrain-invert'),
     terrainResRadios: document.querySelectorAll('input[name="terrain-res"]'),
+    terrainResCustom: el('terrain-res-custom'),
+    terrainResCustomField: el('terrain-res-custom-field'),
     terrainThumb: el('terrain-thumb'),
     terrainClear: el('terrain-clear'),
     terrainPreview: document.querySelector('.terrain-preview'),
@@ -135,11 +137,19 @@
     return 'flat';
   }
 
-  function currentTerrainRings() {
+  function currentTerrainResMode() {
     for (var i = 0; i < inputs.terrainResRadios.length; i++) {
-      if (inputs.terrainResRadios[i].checked) return parseInt(inputs.terrainResRadios[i].value, 10);
+      if (inputs.terrainResRadios[i].checked) return inputs.terrainResRadios[i].value;
     }
-    return 24;
+    return '24';
+  }
+
+  function currentTerrainRings() {
+    var mode = currentTerrainResMode();
+    if (mode === 'custom') {
+      return clamp(Math.round(num(inputs.terrainResCustom, 64)), 4, 256);
+    }
+    return parseInt(mode, 10);
   }
 
   /* Footprint half-extents, matching resolveRadii in geometry.js. */
@@ -359,9 +369,13 @@
     inputs.terrainRelief.disabled = !terrainOn || slitOn;
     inputs.terrainBase.disabled = !terrainOn || slitOn;
     inputs.terrainInvert.disabled = !terrainOn || slitOn;
+    var terrainUsable = terrainOn && !slitOn;
     for (var t = 0; t < inputs.terrainResRadios.length; t++) {
-      inputs.terrainResRadios[t].disabled = !terrainOn || slitOn;
+      inputs.terrainResRadios[t].disabled = !terrainUsable;
     }
+    var customMode = currentTerrainResMode() === 'custom';
+    inputs.terrainResCustomField.hidden = !customMode;
+    inputs.terrainResCustom.disabled = !terrainUsable || !customMode;
   }
 
   function onAnyInput() {
@@ -377,7 +391,7 @@
     inputs.magnetOffsetX, inputs.magnetOffsetY,
     inputs.slitEnabled, inputs.slitLength, inputs.slitWidth,
     inputs.terrainEnabled, inputs.terrainRelief, inputs.terrainBase,
-    inputs.terrainInvert
+    inputs.terrainInvert, inputs.terrainResCustom
   ];
   plainInputs.forEach(function (input) {
     input.addEventListener('input', onAnyInput);

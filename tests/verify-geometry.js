@@ -529,6 +529,14 @@ const rHigh = analyze(BaseGeometry.buildPositions({ shape: 'round', diameter: 32
 check('terrain: low + high resolution both manifold',
   rLow.badEdges === 0 && rHigh.badEdges === 0 && rHigh.triCount > rLow.triCount,
   JSON.stringify({ low: rLow.triCount, high: rHigh.triCount }));
+// custom resolution reaches well past the High preset (UI allows up to 256)
+const rMax = analyze(BaseGeometry.buildPositions({ shape: 'ellipse', width: 60, depth: 35,
+  height: 4, bevel: 1, bevelType: 'flat', magnet: { enabled: true, diameter: 5, depth: 2 },
+  terrain: { enabled: true, rings: 256, displace: bump } }));
+check('terrain: max custom resolution (256 rings) manifold',
+  rMax.badEdges === 0 && rMax.degenerate === 0 && rMax.badHoriz === 0 && rMax.volume > 0,
+  JSON.stringify({ badEdges: rMax.badEdges, degenerate: rMax.degenerate,
+    badHoriz: rMax.badHoriz, tris: rMax.triCount }));
 
 // STL exporter: fake BufferGeometry over one case
 const pos = BaseGeometry.buildPositions(cases[0].params);
