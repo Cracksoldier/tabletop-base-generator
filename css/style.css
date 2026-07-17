@@ -28,6 +28,11 @@ body {
 #app {
   display: flex;
   height: 100vh;
+  /* fill the viewport exactly; only the sidebar scrolls (it has overflow-y:
+     auto). Without this, a tall sidebar (e.g. oval shows two dimension fields)
+     spills past 100vh and raises page-level scrollbars, and the resulting width
+     change leaves the fixed-size canvas overflowing horizontally too. */
+  overflow: hidden;
 }
 
 #sidebar {
