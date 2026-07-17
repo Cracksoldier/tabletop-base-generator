@@ -84,6 +84,51 @@
   grid.position.z = -0.02;
   scene.add(grid);
 
+  /* ---------- axis orientation markers (X red, Y green, Z blue) ---------- */
+
+  /* A camera-facing text label drawn on a canvas, so it needs no font file or
+     network access (works from file://). */
+  function axisLabel(text, color, pos) {
+    var px = 128;
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = px;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = color;
+    ctx.font = 'bold 88px system-ui, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, px / 2, px / 2);
+    var texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 4;
+    var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: texture,
+      depthTest: false, /* labels stay readable even behind the mesh */
+      transparent: true
+    }));
+    sprite.position.copy(pos);
+    sprite.scale.set(6, 6, 6);
+    sprite.renderOrder = 999;
+    return sprite;
+  }
+
+  var axes = new THREE.Group();
+  var AXIS_LEN = 26;
+  var AXIS_DEFS = [
+    { dir: new THREE.Vector3(1, 0, 0), color: 0xe0524b, label: 'X', css: '#e0524b' },
+    { dir: new THREE.Vector3(0, 1, 0), color: 0x59b85a, label: 'Y', css: '#59b85a' },
+    { dir: new THREE.Vector3(0, 0, 1), color: 0x4d90e0, label: 'Z', css: '#4d90e0' }
+  ];
+  AXIS_DEFS.forEach(function (a) {
+    var end = a.dir.clone().multiplyScalar(AXIS_LEN);
+    var line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), end]),
+      new THREE.LineBasicMaterial({ color: a.color })
+    );
+    axes.add(line);
+    axes.add(axisLabel(a.label, a.css, a.dir.clone().multiplyScalar(AXIS_LEN + 4)));
+  });
+  scene.add(axes);
+
   var material = new THREE.MeshStandardMaterial({
     color: 0x99a3b8,
     roughness: 0.55,
