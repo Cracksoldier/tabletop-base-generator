@@ -244,8 +244,22 @@
     var result = readParams();
     currentParams = result.params;
 
+    var geometry;
+    try {
+      geometry = BaseGeometry.build(currentParams);
+    } catch (err) {
+      /* The clamps make this unreachable for known combinations, but if a
+         build ever throws we keep the last good mesh on screen and surface
+         the failure instead of letting the exception escape the input
+         handler (which would freeze the preview with no explanation). */
+      hintsEl.hidden = false;
+      hintsEl.textContent = result.hints.concat(
+        'Could not generate this base — try different settings.').join('\n');
+      return;
+    }
+
     var old = mesh.geometry;
-    mesh.geometry = BaseGeometry.build(currentParams);
+    mesh.geometry = geometry;
     old.dispose();
 
     var triangles = mesh.geometry.getAttribute('position').count / 3;
