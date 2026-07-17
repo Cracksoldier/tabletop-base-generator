@@ -160,6 +160,70 @@ window.BaseGeometry = (function () {
   }
 
   /*
+   * Terrain top surface (§ polar-grid route). Like annulus(up=true) but every
+   * vertex carries its own height: inner/outer are index-aligned loops, zIn/zOut
+   * are per-vertex Z arrays. Winding matches annulus up=true, so facets face +Z.
+   */
+  function terrainBand(out, inner, zIn, outer, zOut) {
+    var n = inner.length / 2;
+    for (var i = 0; i < n; i++) {
+      var j = (i + 1) % n;
+      var ix = inner[2 * i], iy = inner[2 * i + 1];
+      var jx = inner[2 * j], jy = inner[2 * j + 1];
+      var ox = outer[2 * i], oy = outer[2 * i + 1];
+      var px = outer[2 * j], py = outer[2 * j + 1];
+      tri(out, ix, iy, zIn[i], ox, oy, zOut[i], px, py, zOut[j]);
+      tri(out, ix, iy, zIn[i], px, py, zOut[j], jx, jy, zIn[j]);
+    }
+  }
+
+  /* Fan the innermost terrain ring to a center apex; winding matches fan(down=false). */
+  function terrainFan(out, ring, zRing, ax, ay, az) {
+    var n = ring.length / 2;
+    for (var i = 0; i < n; i++) {
+      var j = (i + 1) % n;
+      tri(out, ax, ay, az,
+        ring[2 * i], ring[2 * i + 1], zRing[i],
+        ring[2 * j], ring[2 * j + 1], zRing[j]);
+    }
+  }
+
+  /*
+   * Replace the flat top with a displaced polar grid. Concentric rings from the
+   * center out to the top outline (`topLoop`, reused verbatim so the rim welds
+   * bit-identically to the wall/bevel top), each vertex raised to H + displace.
+   * Flat rim: the outer ring is pinned to H (relief 0) so it welds; interior
+   * rings and the center apex carry the terrain relief. Watertight by
+   * construction — same ring-bridging mechanism as the bevel bands.
+   */
+  function buildTerrainTop(out, shape, rx, ry, bevel, angles, H, terrain, topLoop) {
+    var RINGS = terrain.rings;
+    var disp = terrain.displace;
+    var trx = rx - bevel, tryy = ry - bevel;
+    var n = angles.length;
+    var prev = null, prevZ = null;
+    for (var k = 1; k <= RINGS; k++) {
+      var last = (k === RINGS);
+      var f = k / RINGS;
+      var ring = last ? topLoop : sampleLoop(shape, trx * f, tryy * f, angles);
+      var z = new Float64Array(n);
+      var i;
+      if (last) {
+        for (i = 0; i < n; i++) z[i] = H;
+      } else {
+        for (i = 0; i < n; i++) z[i] = H + disp(ring[2 * i], ring[2 * i + 1]);
+      }
+      if (k === 1) {
+        terrainFan(out, ring, z, 0, 0, H + disp(0, 0));
+      } else {
+        terrainBand(out, prev, prevZ, ring, z);
+      }
+      prev = ring;
+      prevZ = z;
+    }
+  }
+
+  /*
    * Flat cap at height z facing -Z: a convex CCW outer loop minus disjoint
    * convex hole loops — the bottom face when the slit and the magnet recess
    * coexist, which is beyond single-annulus bridging. Each hole is keyhole-
@@ -526,10 +590,17 @@ window.BaseGeometry = (function () {
     var bevel = clampBevel(params, rx, ry);
     var wallTop = H - bevel;
 
+    /* Terrain wins over the slit: the two are mutually exclusive (v1), and the
+       UI already enforces it — this is the defensive drop, mirroring how a
+       centered magnet is dropped rather than allowed to corrupt the mesh. */
+    var t = params.terrain || {};
+    var terrain = (t.enabled && typeof t.displace === 'function' && t.rings > 0)
+      ? t : null;
+
     /* Slit gate + defensive clamp with the same 0.2 mm slack as the magnet. */
     var s = params.slit || {};
     var slit = null;
-    if (s.enabled && s.length > 0 && s.width > 0) {
+    if (!terrain && s.enabled && s.length > 0 && s.width > 0) {
       var sf = clampSlitSize(params, s.length, s.width, 0.2);
       if (sf.length > 0.05 && sf.width > 0.05) slit = sf;
     }
@@ -634,6 +705,8 @@ window.BaseGeometry = (function () {
     }
     if (slit) {
       annulus(positions, slitLoop, topLoop, H, true);
+    } else if (terrain) {
+      buildTerrainTop(positions, shape, rx, ry, bevel, angles, H, terrain, topLoop);
     } else {
       fan(positions, topLoop, H, false);
     }

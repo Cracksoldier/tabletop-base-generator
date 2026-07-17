@@ -25,6 +25,15 @@
     slitEnabled: el('slit-enabled'),
     slitLength: el('slit-length'),
     slitWidth: el('slit-width'),
+    terrainEnabled: el('terrain-enabled'),
+    terrainImage: el('terrain-image'),
+    terrainRelief: el('terrain-relief'),
+    terrainBase: el('terrain-base'),
+    terrainInvert: el('terrain-invert'),
+    terrainResRadios: document.querySelectorAll('input[name="terrain-res"]'),
+    terrainThumb: el('terrain-thumb'),
+    terrainClear: el('terrain-clear'),
+    terrainPreview: document.querySelector('.terrain-preview'),
     meshColor: el('mesh-color')
   };
   var hintsEl = el('hints');
@@ -126,6 +135,20 @@
     return 'flat';
   }
 
+  function currentTerrainRings() {
+    for (var i = 0; i < inputs.terrainResRadios.length; i++) {
+      if (inputs.terrainResRadios[i].checked) return parseInt(inputs.terrainResRadios[i].value, 10);
+    }
+    return 24;
+  }
+
+  /* Footprint half-extents, matching resolveRadii in geometry.js. */
+  function footprintRadii(p) {
+    if (p.shape === 'round') return { rx: p.diameter / 2, ry: p.diameter / 2 };
+    if (p.shape === 'ellipse') return { rx: p.width / 2, ry: p.depth / 2 };
+    return { rx: p.side / 2, ry: p.side / 2 };
+  }
+
   /*
    * Read the form and produce safe, clamped parameters. Inputs are never
    * rewritten; instead every applied limit is reported as a hint.
@@ -144,7 +167,8 @@
       bevel: 0,
       bevelType: currentBevelType(),
       magnet: { enabled: false, diameter: 5, depth: 2, offsetX: 0, offsetY: 0 },
-      slit: { enabled: false, length: 20, width: 3 }
+      slit: { enabled: false, length: 20, width: 3 },
+      terrain: { enabled: false }
     };
 
     var minFootprint;
@@ -162,8 +186,41 @@
       p.bevel = bevel;
     }
 
+    /* Terrain is read before the slit and wins over it: the two are mutually
+       exclusive (v1). A displaced top surface can't also host the slit's
+       through-cut, so an active terrain forces the slit off. */
+    var terrainActive = false;
+    if (inputs.terrainEnabled.checked) {
+      var buf = HeightMap.get();
+      if (!buf) {
+        hints.push('Load a height map to add terrain.');
+      } else {
+        var tr = footprintRadii(p);
+        var relief = clamp(num(inputs.terrainRelief, 2), 0.2, 20);
+        var baseOff = clamp(num(inputs.terrainBase, 0), 0, 10);
+        p.terrain = {
+          enabled: true,
+          rings: currentTerrainRings(),
+          relief: relief,
+          displace: HeightMap.makeDisplace(buf, {
+            rx: tr.rx, ry: tr.ry,
+            reliefHeight: relief, baseOffset: baseOff,
+            invert: inputs.terrainInvert.checked
+          })
+        };
+        terrainActive = true;
+        if (buf.downsampled) {
+          hints.push('Height map downsampled to ' + buf.width + ' × ' + buf.height +
+            ' px for preview and export.');
+        }
+      }
+    }
+    if (terrainActive && inputs.slitEnabled.checked) {
+      hints.push('Terrain and slit can’t be combined — slit disabled.');
+    }
+
     /* Read the slit before the magnet: the magnet clamp needs p.slit. */
-    if (inputs.slitEnabled.checked) {
+    if (!terrainActive && inputs.slitEnabled.checked) {
       var sLen = Math.max(0, num(inputs.slitLength, 20));
       var sWid = Math.max(0, num(inputs.slitWidth, 3));
       if (sLen > 0 && sWid > 0) {
@@ -289,8 +346,22 @@
     inputs.magnetDepth.disabled = !inputs.magnetEnabled.checked;
     inputs.magnetOffsetX.disabled = !inputs.magnetEnabled.checked;
     inputs.magnetOffsetY.disabled = !inputs.magnetEnabled.checked;
-    inputs.slitLength.disabled = !inputs.slitEnabled.checked;
-    inputs.slitWidth.disabled = !inputs.slitEnabled.checked;
+    /* Terrain and slit are mutually exclusive: each disables the other's
+       controls while it is on, so the conflict can't be entered from the UI. */
+    var terrainOn = inputs.terrainEnabled.checked;
+    var slitOn = inputs.slitEnabled.checked;
+    inputs.slitEnabled.disabled = terrainOn;
+    inputs.slitLength.disabled = !slitOn || terrainOn;
+    inputs.slitWidth.disabled = !slitOn || terrainOn;
+
+    inputs.terrainEnabled.disabled = slitOn;
+    inputs.terrainImage.disabled = !terrainOn || slitOn;
+    inputs.terrainRelief.disabled = !terrainOn || slitOn;
+    inputs.terrainBase.disabled = !terrainOn || slitOn;
+    inputs.terrainInvert.disabled = !terrainOn || slitOn;
+    for (var t = 0; t < inputs.terrainResRadios.length; t++) {
+      inputs.terrainResRadios[t].disabled = !terrainOn || slitOn;
+    }
   }
 
   function onAnyInput() {
@@ -304,7 +375,9 @@
     inputs.bevelEnabled, inputs.bevelSize,
     inputs.magnetEnabled, inputs.magnetDiameter, inputs.magnetDepth,
     inputs.magnetOffsetX, inputs.magnetOffsetY,
-    inputs.slitEnabled, inputs.slitLength, inputs.slitWidth
+    inputs.slitEnabled, inputs.slitLength, inputs.slitWidth,
+    inputs.terrainEnabled, inputs.terrainRelief, inputs.terrainBase,
+    inputs.terrainInvert
   ];
   plainInputs.forEach(function (input) {
     input.addEventListener('input', onAnyInput);
@@ -313,6 +386,38 @@
   for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
     inputs.bevelTypeRadios[i].addEventListener('change', onAnyInput);
   }
+
+  for (var i = 0; i < inputs.terrainResRadios.length; i++) {
+    inputs.terrainResRadios[i].addEventListener('change', onAnyInput);
+  }
+
+  /* Load a height map from disk; the decoded buffer lives in HeightMap. */
+  inputs.terrainImage.addEventListener('change', function () {
+    var file = inputs.terrainImage.files && inputs.terrainImage.files[0];
+    if (!file) return;
+    HeightMap.load(file, function (info, err) {
+      if (err || !info) {
+        HeightMap.clear();
+        inputs.terrainPreview.hidden = true;
+        hintsEl.hidden = false;
+        hintsEl.textContent = (err && err.message) || 'Could not load the height map.';
+        return;
+      }
+      if (inputs.terrainThumb.src) URL.revokeObjectURL(inputs.terrainThumb.src);
+      inputs.terrainThumb.src = URL.createObjectURL(file);
+      inputs.terrainPreview.hidden = false;
+      regenerate();
+    });
+  });
+
+  inputs.terrainClear.addEventListener('click', function () {
+    HeightMap.clear();
+    inputs.terrainImage.value = '';
+    if (inputs.terrainThumb.src) URL.revokeObjectURL(inputs.terrainThumb.src);
+    inputs.terrainThumb.removeAttribute('src');
+    inputs.terrainPreview.hidden = true;
+    regenerate();
+  });
 
   /* Preview-only: recolor the material directly, no geometry rebuild. */
   inputs.meshColor.addEventListener('input', function () {
@@ -362,6 +467,9 @@
     }
     if (p.slit.enabled) {
       name += '-slit' + f(p.slit.length) + 'x' + f(p.slit.width);
+    }
+    if (p.terrain && p.terrain.enabled) {
+      name += '-terrain-r' + f(p.terrain.relief);
     }
     return name + '.stl';
   }

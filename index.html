@@ -134,6 +134,39 @@
       </section>
 
       <section>
+        <h2><i class="fa-solid fa-mountain" aria-hidden="true"></i> Terrain</h2>
+        <label class="toggle">
+          <input type="checkbox" id="terrain-enabled">
+          <span>Height-map relief on top</span>
+        </label>
+        <div class="field">
+          <label for="terrain-image">Height map (grayscale image)</label>
+          <input type="file" id="terrain-image" accept="image/*" disabled>
+        </div>
+        <div class="field terrain-preview" hidden>
+          <img id="terrain-thumb" alt="Height map preview" width="64" height="64">
+          <button id="terrain-clear" type="button" class="link-button">Clear</button>
+        </div>
+        <div class="field">
+          <label for="terrain-relief">Relief height (mm)</label>
+          <input type="number" id="terrain-relief" value="2" min="0.2" max="20" step="0.1" disabled>
+        </div>
+        <div class="field">
+          <label for="terrain-base">Base offset (mm)</label>
+          <input type="number" id="terrain-base" value="0" min="0" max="10" step="0.1" disabled>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="terrain-invert" disabled>
+          <span>Invert (black is high)</span>
+        </label>
+        <div class="segmented" role="radiogroup" aria-label="Terrain resolution">
+          <label><input type="radio" name="terrain-res" value="12"><span>Low</span></label>
+          <label><input type="radio" name="terrain-res" value="24" checked><span>Medium</span></label>
+          <label><input type="radio" name="terrain-res" value="48"><span>High</span></label>
+        </div>
+      </section>
+
+      <section>
         <h2><i class="fa-solid fa-palette" aria-hidden="true"></i> Preview</h2>
         <div class="field">
           <label for="mesh-color">Mesh color</label>
@@ -158,6 +191,7 @@
   <script src="vendor/three.min.js"></script>
   <script src="vendor/OrbitControls.js"></script>
   <script src="js/geometry.js"></script>
+  <script src="js/heightmap.js"></script>
   <script src="js/exporter.js"></script>
   <script src="js/main.js"></script>
 </body>

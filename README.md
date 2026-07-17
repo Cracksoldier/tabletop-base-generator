@@ -16,6 +16,11 @@ tabletop) miniatures and exports them as STL, ready for slicing.
 - **Optional slit** cut all the way through the base (slotta-style, for
   miniatures with a tab), length and width customizable — coexists with the
   magnet recess as long as the magnet is offset clear of the slit
+- **Optional height-map terrain** on the top surface — load a grayscale image
+  from disk and its brightness is projected as vertical relief (rubble, rock,
+  cracked earth …), with adjustable relief height, base offset, invert and
+  resolution. Loaded entirely in-browser (no upload); coexists with the bevel
+  and the magnet, and is mutually exclusive with the slit
 - **Presets** for common base sizes (25/28.5/32/40/50/60/80/100 mm round,
   60×35 … 120×92 mm oval, 20/25/40/50 mm square)
 - **Binary STL export** in millimetres, Z-up — drops straight into your slicer
@@ -72,6 +77,17 @@ No build workflow is required — the repository is served as-is.
   not noticeable. The round bevel inherits the same approximation (its
   rings are reduced-radii ellipses) and polygonizes the quarter-circle
   fillet in 8 steps — a deviation below 0.01 mm at a 2 mm bevel.
+- **Height-map terrain** replaces the flat top with a displaced polar grid:
+  concentric rings (the shared angle list × N radial steps) whose outermost
+  ring is the existing top outline reused verbatim, so the relief welds
+  bit-identically to the wall/bevel top and the mesh stays watertight by
+  construction. Two approximations follow from the polar layout: angular
+  detail is capped at the angle-list density (96 + corners), radial detail
+  thins toward the middle, and the exact center is a single pinch vertex, so
+  the finest features right at the center are smeared. The terrain edge is
+  pinned flush with the rim ("flat rim"), and the image is read from disk via
+  a data URL (never a `file://` path, which would taint the canvas). Terrain
+  and the through-slit are mutually exclusive.
 - The STL is **binary**, little-endian, units = mm, Z-up, with facet normals
   recomputed from the triangle edges.
 
@@ -82,6 +98,7 @@ index.html            page layout and script loading order
 favicon.svg, .png     d20 tab icon (SVG + 32px PNG fallback)
 css/style.css         UI styling
 js/geometry.js        procedural mesh construction (no THREE dependency in core)
+js/heightmap.js       height-map decode + pure displacement sampler (BaseGeometry-free)
 js/exporter.js        binary STL writer + download
 js/main.js            scene, controls, UI wiring, validation, presets
 vendor/               three.js r147 (three.min.js, OrbitControls.js, license)

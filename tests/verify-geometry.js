@@ -7,8 +7,12 @@ const root = path.join(__dirname, '..');
 const window = {};
 eval(fs.readFileSync(path.join(root, 'js/geometry.js'), 'utf8'));
 eval(fs.readFileSync(path.join(root, 'js/exporter.js'), 'utf8'));
+// heightmap.js touches document/FileReader/Image only inside load(); its pure
+// sample()/makeDisplace() eval fine under Node and are what the tests exercise.
+eval(fs.readFileSync(path.join(root, 'js/heightmap.js'), 'utf8'));
 const BaseGeometry = window.BaseGeometry;
 const StlExport = window.StlExport;
+const HeightMap = window.HeightMap;
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -402,6 +406,129 @@ check('clampMagnetOffset: corner offset scaled back',
 const noOffset = BaseGeometry.clampMagnetOffset(clampParams, 0, 0, 1.5);
 check('clampMagnetOffset: zero offset is a no-op',
   noOffset.scaled === false && noOffset.x === 0 && noOffset.y === 0);
+
+/* ---------- terrain (height-map top surface) ---------- */
+
+// Sampler unit tests: a synthetic 2x2 buffer, columns dark->bright, and (with
+// the V flip) row 0 = top. RGBA rows are laid out top-to-bottom like a real
+// image. Luminance of a gray pixel (r=g=b=v) is v/255.
+function grayBuf(rows) {
+  const h = rows.length, w = rows[0].length;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = (y * w + x) * 4;
+    data[o] = data[o + 1] = data[o + 2] = rows[y][x];
+    data[o + 3] = 255;
+  }
+  return { data, width: w, height: h };
+}
+// row 0 (image top) = [0,255], row 1 (image bottom) = [0,255]
+const sbuf = grayBuf([[0, 255], [0, 255]]);
+check('sample: left edge is black (0)', Math.abs(HeightMap.sample(sbuf, 0, 0.5) - 0) < 1e-9,
+  HeightMap.sample(sbuf, 0, 0.5));
+check('sample: right edge is white (1)', Math.abs(HeightMap.sample(sbuf, 1, 0.5) - 1) < 1e-9,
+  HeightMap.sample(sbuf, 1, 0.5));
+check('sample: horizontal midpoint bilinear (0.5)',
+  Math.abs(HeightMap.sample(sbuf, 0.5, 0.5) - 0.5) < 1e-9, HeightMap.sample(sbuf, 0.5, 0.5));
+// V flip: top row vs bottom row. Use a vertical gradient: image row0=0, row1=255.
+// v=1 (footprint back) maps to image row 0 (top) => 0; v=0 maps to row1 => 1.
+const vbuf = grayBuf([[0, 0], [255, 255]]);
+check('sample: V flip top (v=1 -> image row 0)', Math.abs(HeightMap.sample(vbuf, 0.5, 1) - 0) < 1e-9,
+  HeightMap.sample(vbuf, 0.5, 1));
+check('sample: V flip bottom (v=0 -> image row 1)', Math.abs(HeightMap.sample(vbuf, 0.5, 0) - 1) < 1e-9,
+  HeightMap.sample(vbuf, 0.5, 0));
+check('sample: clamps out-of-range UV', Math.abs(HeightMap.sample(sbuf, 2, -1) - 1) < 1e-9,
+  HeightMap.sample(sbuf, 2, -1));
+
+// makeDisplace: brightness*relief + baseOffset, with invert
+const dsp = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 1, invert: false });
+check('makeDisplace: black -> baseOffset', Math.abs(dsp(-10, 0) - 1) < 1e-9, dsp(-10, 0));
+check('makeDisplace: white -> baseOffset + relief', Math.abs(dsp(10, 0) - 5) < 1e-9, dsp(10, 0));
+const dspInv = HeightMap.makeDisplace(sbuf, { rx: 10, ry: 10, reliefHeight: 4, baseOffset: 0, invert: true });
+check('makeDisplace: invert flips black<->white', Math.abs(dspInv(-10, 0) - 4) < 1e-9, dspInv(-10, 0));
+
+// Geometry: synthetic displace closures (no image needed)
+const flat = () => 0;
+const bump = (x, y) => 1.5 * Math.exp(-(x * x + y * y) / 40); // smooth radial hill
+
+// displace=0 reproduces the flat top exactly -> volume equals the flat base
+for (const shape of ['round', 'ellipse', 'square']) {
+  for (const bv of bevelVariants) {
+    const base = { shape, diameter: 32, width: 60, depth: 35, side: 25,
+      height: 4, bevel: bv.bevel, bevelType: bv.bevelType, magnet: { enabled: false } };
+    const flatPos = BaseGeometry.buildPositions({ ...base,
+      terrain: { enabled: true, rings: 24, displace: flat } });
+    const r = analyze(flatPos);
+    const want = analyticVolume(base);
+    check(shape + ' terrain(0) bevel=' + bv.label + ': manifold + oriented',
+      r.badEdges === 0 && r.degenerate === 0 && r.badHoriz === 0,
+      JSON.stringify({ badEdges: r.badEdges, degenerate: r.degenerate, badHoriz: r.badHoriz }));
+    check(shape + ' terrain(0) bevel=' + bv.label + ': volume equals flat base',
+      Math.abs(r.volume - want) < 1e-6, 'got ' + r.volume + ' expected ' + want);
+  }
+}
+
+// added volume is exactly linear in constant relief c (every terrain vertex
+// moves linearly with c; projected triangle areas are fixed) -> a closed-form-
+// free exact check: V(2c) - V(0) == 2*(V(c) - V(0))
+function terrainVol(c) {
+  return analyze(BaseGeometry.buildPositions({
+    shape: 'round', diameter: 32, height: 4, bevel: 0, magnet: { enabled: false },
+    terrain: { enabled: true, rings: 24, displace: () => c }
+  })).volume;
+}
+const v0 = terrainVol(0), v1 = terrainVol(1), v2 = terrainVol(2);
+check('terrain: constant relief adds material', v1 > v0, v1 + ' vs ' + v0);
+check('terrain: added volume linear in relief',
+  Math.abs((v2 - v0) - 2 * (v1 - v0)) < 1e-6, (v2 - v0) + ' vs ' + 2 * (v1 - v0));
+// flat rim pins the boundary to 0, so the plateau can't cover the full top area
+const topArea = C96 * 16 * 16;
+check('terrain: constant added volume within flat-rim bound',
+  (v1 - v0) > 0 && (v1 - v0) < topArea * 1, (v1 - v0) + ' vs ' + topArea);
+
+// topological matrix: terrain x shape x bevel x magnet with a real relief map
+for (const shape of ['round', 'ellipse', 'square']) {
+  for (const bv of bevelVariants) {
+    for (const mv of magnetVariants) {
+      const p = { shape, diameter: 32, width: 60, depth: 35, side: 25,
+        height: 6, bevel: bv.bevel, bevelType: bv.bevelType, magnet: mv.magnet,
+        terrain: { enabled: true, rings: 24, displace: bump } };
+      const r = analyze(BaseGeometry.buildPositions(p));
+      const nm = shape + ' terrain bevel=' + bv.label + ' magnet=' + mv.label;
+      check(nm + ': manifold', r.badEdges === 0, r.badEdges + ' bad edges');
+      check(nm + ': no degenerate tris', r.degenerate === 0, r.degenerate + ' degenerate');
+      check(nm + ': positive volume', r.volume > 0, 'volume=' + r.volume.toFixed(3));
+      check(nm + ': horizontal facets oriented', r.badHoriz === 0, r.badHoriz + ' misoriented');
+    }
+  }
+}
+
+// terrain wins over slit: both requested -> the slit is dropped, mesh is clean,
+// and the volume matches a terrain-only build (no through-cut removed)
+const bothPos = BaseGeometry.buildPositions({
+  shape: 'round', diameter: 32, height: 4, bevel: 0, magnet: { enabled: false },
+  slit: { enabled: true, length: 20, width: 3 },
+  terrain: { enabled: true, rings: 24, displace: bump } });
+const bothR = analyze(bothPos);
+const terrainOnly = analyze(BaseGeometry.buildPositions({
+  shape: 'round', diameter: 32, height: 4, bevel: 0, magnet: { enabled: false },
+  terrain: { enabled: true, rings: 24, displace: bump } }));
+check('terrain + slit: slit dropped, mesh clean',
+  bothR.badEdges === 0 && bothR.degenerate === 0 && bothR.badHoriz === 0 &&
+  Math.abs(bothR.volume - terrainOnly.volume) < 1e-9,
+  JSON.stringify({ badEdges: bothR.badEdges, degenerate: bothR.degenerate,
+    badHoriz: bothR.badHoriz, dv: bothR.volume - terrainOnly.volume }));
+
+// different ring counts all stay manifold (and change triangle count)
+const rLow = analyze(BaseGeometry.buildPositions({ shape: 'round', diameter: 32, height: 4,
+  bevel: 1, bevelType: 'round', magnet: { enabled: false },
+  terrain: { enabled: true, rings: 12, displace: bump } }));
+const rHigh = analyze(BaseGeometry.buildPositions({ shape: 'round', diameter: 32, height: 4,
+  bevel: 1, bevelType: 'round', magnet: { enabled: false },
+  terrain: { enabled: true, rings: 48, displace: bump } }));
+check('terrain: low + high resolution both manifold',
+  rLow.badEdges === 0 && rHigh.badEdges === 0 && rHigh.triCount > rLow.triCount,
+  JSON.stringify({ low: rLow.triCount, high: rHigh.triCount }));
 
 // STL exporter: fake BufferGeometry over one case
 const pos = BaseGeometry.buildPositions(cases[0].params);
