@@ -159,7 +159,7 @@
   /* Custom angular segments override; 0 means "derive from the ring count". */
   function currentTerrainSegments() {
     if (currentTerrainResMode() !== 'custom') return 0;
-    return clamp(Math.round(num(inputs.terrainSegCustom, 256)), 12, 1024);
+    return clamp(Math.round(num(inputs.terrainSegCustom, 256)), 96, 1024);
   }
 
   /* Footprint half-extents, matching resolveRadii in geometry.js. */
