@@ -8,11 +8,16 @@
 
   var inputs = {
     preset: el('preset'),
+    presetGroup: el('my-presets-group'),
+    presetSave: el('preset-save'),
+    presetDelete: el('preset-delete'),
     shapeRadios: document.querySelectorAll('input[name="shape"]'),
     diameter: el('diameter'),
     width: el('width'),
     depth: el('depth'),
     side: el('side'),
+    hexFlat: el('hex-flat'),
+    cornerRadius: el('corner-radius'),
     height: el('height'),
     bevelEnabled: el('bevel-enabled'),
     bevelTypeRadios: document.querySelectorAll('input[name="bevel-type"]'),
@@ -232,6 +237,7 @@
   function footprintRadii(p) {
     if (p.shape === 'round') return { rx: p.diameter / 2, ry: p.diameter / 2 };
     if (p.shape === 'ellipse') return { rx: p.width / 2, ry: p.depth / 2 };
+    if (p.shape === 'hexagon') return { rx: p.hexFlat / 2, ry: p.hexFlat / 2 };
     return { rx: p.side / 2, ry: p.side / 2 };
   }
 
@@ -249,6 +255,8 @@
       width: clamp(num(inputs.width, 60), 5, 300),
       depth: clamp(num(inputs.depth, 35), 5, 300),
       side: clamp(num(inputs.side, 25), 5, 300),
+      hexFlat: clamp(num(inputs.hexFlat, 25), 5, 300),
+      cornerRadius: 0,
       height: clamp(num(inputs.height, 4), 1, 50),
       bevel: 0,
       bevelType: currentBevelType(),
@@ -257,9 +265,19 @@
       terrain: { enabled: false }
     };
 
+    if (shape === 'rounded-square') {
+      var maxCorner = p.side / 2;
+      var reqCorner = Math.max(0, num(inputs.cornerRadius, 0));
+      p.cornerRadius = Math.min(reqCorner, maxCorner);
+      if (reqCorner > maxCorner + 1e-9) {
+        hints.push('Corner radius limited to ' + p.cornerRadius.toFixed(1) + ' mm by the base size.');
+      }
+    }
+
     var minFootprint;
     if (shape === 'round') minFootprint = p.diameter;
     else if (shape === 'ellipse') minFootprint = Math.min(p.width, p.depth);
+    else if (shape === 'hexagon') minFootprint = p.hexFlat;
     else minFootprint = p.side;
 
     if (inputs.bevelEnabled.checked) {
@@ -380,6 +398,8 @@
   function footprintLabel(p) {
     if (p.shape === 'round') return p.diameter.toFixed(1) + ' mm round';
     if (p.shape === 'ellipse') return p.width.toFixed(1) + ' × ' + p.depth.toFixed(1) + ' mm oval';
+    if (p.shape === 'hexagon') return p.hexFlat.toFixed(1) + ' mm hexagon (flat-to-flat)';
+    if (p.shape === 'rounded-square') return p.side.toFixed(1) + ' mm rounded square (r' + p.cornerRadius.toFixed(1) + ')';
     return p.side.toFixed(1) + ' mm square';
   }
 
@@ -421,7 +441,8 @@
     var shape = currentShape();
     var fields = document.querySelectorAll('.field[data-shape]');
     for (var i = 0; i < fields.length; i++) {
-      fields[i].hidden = fields[i].getAttribute('data-shape') !== shape;
+      var shapes = fields[i].getAttribute('data-shape').split(' ');
+      fields[i].hidden = shapes.indexOf(shape) === -1;
     }
   }
 
@@ -461,12 +482,13 @@
 
   function onAnyInput() {
     inputs.preset.value = '';
+    updatePresetDeleteVisibility();
     updateEnabledStates();
     regenerate();
   }
 
   var plainInputs = [
-    inputs.diameter, inputs.width, inputs.depth, inputs.side, inputs.height,
+    inputs.diameter, inputs.width, inputs.depth, inputs.side, inputs.hexFlat, inputs.cornerRadius, inputs.height,
     inputs.bevelEnabled, inputs.bevelSize,
     inputs.magnetEnabled, inputs.magnetDiameter, inputs.magnetDepth,
     inputs.magnetOffsetX, inputs.magnetOffsetY,
@@ -534,28 +556,205 @@
   for (var i = 0; i < inputs.shapeRadios.length; i++) {
     inputs.shapeRadios[i].addEventListener('change', function () {
       inputs.preset.value = '';
+      updatePresetDeleteVisibility();
       updateShapeFields();
       regenerate();
     });
   }
 
+  /* Shared by the built-in shape:dims presets and applyFullConfig — sets the
+     shape radio and whichever dimension fields are present on cfg (the
+     built-in handler passes only the fields its shape uses; a saved custom
+     preset always has all of them, since snapshotInputs reads every field
+     regardless of the shape active when it was saved). */
+  function applyShapeDims(cfg) {
+    for (var i = 0; i < inputs.shapeRadios.length; i++) {
+      inputs.shapeRadios[i].checked = inputs.shapeRadios[i].value === cfg.shape;
+    }
+    if (cfg.diameter !== undefined) inputs.diameter.value = cfg.diameter;
+    if (cfg.width !== undefined) inputs.width.value = cfg.width;
+    if (cfg.depth !== undefined) inputs.depth.value = cfg.depth;
+    if (cfg.side !== undefined) inputs.side.value = cfg.side;
+    if (cfg.hexFlat !== undefined) inputs.hexFlat.value = cfg.hexFlat;
+    if (cfg.cornerRadius !== undefined) inputs.cornerRadius.value = cfg.cornerRadius;
+  }
+
+  /* Raw field values (not the post-clamp params) for a custom preset, so
+     clamping re-applies naturally on load. Terrain is deliberately excluded
+     — its displace() closure can't be serialized, and a partially-restored
+     terrain state (image gone, sliders back) would be confusing. */
+  function snapshotInputs() {
+    return {
+      shape: currentShape(),
+      diameter: inputs.diameter.value,
+      width: inputs.width.value,
+      depth: inputs.depth.value,
+      side: inputs.side.value,
+      hexFlat: inputs.hexFlat.value,
+      cornerRadius: inputs.cornerRadius.value,
+      height: inputs.height.value,
+      bevelEnabled: inputs.bevelEnabled.checked,
+      bevelType: currentBevelType(),
+      bevelSize: inputs.bevelSize.value,
+      magnetEnabled: inputs.magnetEnabled.checked,
+      magnetDiameter: inputs.magnetDiameter.value,
+      magnetDepth: inputs.magnetDepth.value,
+      magnetOffsetX: inputs.magnetOffsetX.value,
+      magnetOffsetY: inputs.magnetOffsetY.value,
+      slitEnabled: inputs.slitEnabled.checked,
+      slitLength: inputs.slitLength.value,
+      slitWidth: inputs.slitWidth.value
+    };
+  }
+
+  /* Restores a full custom-preset snapshot, including bevel/magnet/slit
+     on/off state — unlike the built-in presets, which only ever touch shape
+     and dimensions. */
+  function applyFullConfig(cfg) {
+    applyShapeDims(cfg);
+    inputs.height.value = cfg.height;
+    inputs.bevelEnabled.checked = cfg.bevelEnabled;
+    for (var i = 0; i < inputs.bevelTypeRadios.length; i++) {
+      inputs.bevelTypeRadios[i].checked = inputs.bevelTypeRadios[i].value === cfg.bevelType;
+    }
+    inputs.bevelSize.value = cfg.bevelSize;
+    inputs.magnetEnabled.checked = cfg.magnetEnabled;
+    inputs.magnetDiameter.value = cfg.magnetDiameter;
+    inputs.magnetDepth.value = cfg.magnetDepth;
+    inputs.magnetOffsetX.value = cfg.magnetOffsetX;
+    inputs.magnetOffsetY.value = cfg.magnetOffsetY;
+    inputs.slitEnabled.checked = cfg.slitEnabled;
+    inputs.slitLength.value = cfg.slitLength;
+    inputs.slitWidth.value = cfg.slitWidth;
+  }
+
+  /* Rebuilds the "My presets" optgroup from storage; called on load and
+     after every save/delete. Custom entries are packed as "custom:" + name
+     (not name:dims like the built-in presets), extracted with slice() below
+     rather than split(':') so a name containing a colon round-trips. */
+  function refreshPresetOptions() {
+    inputs.presetGroup.innerHTML = '';
+    var list = PresetStore.list();
+    inputs.presetGroup.hidden = list.length === 0;
+    list.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = 'custom:' + p.name;
+      opt.textContent = p.name;
+      inputs.presetGroup.appendChild(opt);
+    });
+  }
+
+  function updatePresetDeleteVisibility() {
+    inputs.presetDelete.hidden = inputs.preset.value.indexOf('custom:') !== 0;
+  }
+
   inputs.preset.addEventListener('change', function () {
     var value = inputs.preset.value;
+    updatePresetDeleteVisibility();
     if (!value) return;
+
+    if (value.indexOf('custom:') === 0) {
+      var name = value.slice('custom:'.length);
+      var cfg = PresetStore.get(name);
+      if (!cfg) return;
+      applyFullConfig(cfg);
+      updateShapeFields();
+      updateEnabledStates();
+      regenerate();
+      var fr = footprintRadii(currentParams);
+      fitCamera(Math.max(fr.rx, fr.ry) * 2);
+      return;
+    }
+
     var parts = value.split(':');
     var shape = parts[0];
     var dims = parts[1].split('x').map(parseFloat);
-
-    for (var i = 0; i < inputs.shapeRadios.length; i++) {
-      inputs.shapeRadios[i].checked = inputs.shapeRadios[i].value === shape;
-    }
-    if (shape === 'round') inputs.diameter.value = dims[0];
-    else if (shape === 'ellipse') { inputs.width.value = dims[0]; inputs.depth.value = dims[1]; }
-    else inputs.side.value = dims[0];
+    var dimsCfg = { shape: shape };
+    if (shape === 'round') dimsCfg.diameter = dims[0];
+    else if (shape === 'ellipse') { dimsCfg.width = dims[0]; dimsCfg.depth = dims[1]; }
+    else dimsCfg.side = dims[0];
+    applyShapeDims(dimsCfg);
 
     updateShapeFields();
     regenerate();
     fitCamera(Math.max.apply(null, dims));
+  });
+
+  /* ---------- custom preset save / overwrite / delete (dialog-driven) ---------- */
+
+  function openSaveDialog() {
+    var note = document.createElement('p');
+    note.textContent = 'Save the current configuration as a custom preset. Terrain is not included.';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 50;
+    input.placeholder = 'Preset name';
+
+    Dialog.open({
+      title: 'Save preset',
+      bodyNodes: [note, input],
+      confirmLabel: 'Save',
+      focusEl: input,
+      onConfirm: function () {
+        var name = input.value.trim().slice(0, 50);
+        if (!name) { input.focus(); return; }
+        var existing = PresetStore.list().filter(function (e) {
+          return e.name.toLowerCase() === name.toLowerCase();
+        })[0];
+        if (existing) {
+          showOverwriteConfirm(existing.name);
+          return;
+        }
+        savePreset(name);
+      }
+    });
+  }
+
+  function showOverwriteConfirm(name) {
+    var note = document.createElement('p');
+    note.textContent = 'A preset named "' + name + '" already exists. Overwrite it?';
+    Dialog.update({
+      title: 'Overwrite preset?',
+      bodyNodes: [note],
+      confirmLabel: 'Overwrite',
+      onConfirm: function () { savePreset(name); }
+    });
+  }
+
+  function savePreset(name) {
+    var ok = PresetStore.save(name, snapshotInputs());
+    Dialog.close();
+    if (!ok) {
+      hintsEl.hidden = false;
+      hintsEl.textContent = 'Could not save the preset (browser storage unavailable).';
+      return;
+    }
+    refreshPresetOptions();
+    inputs.preset.value = 'custom:' + name;
+    updatePresetDeleteVisibility();
+  }
+
+  inputs.presetSave.addEventListener('click', openSaveDialog);
+
+  inputs.presetDelete.addEventListener('click', function () {
+    var value = inputs.preset.value;
+    if (value.indexOf('custom:') !== 0) return;
+    var name = value.slice('custom:'.length);
+
+    var note = document.createElement('p');
+    note.textContent = 'Delete the preset "' + name + '"? This cannot be undone.';
+    Dialog.open({
+      title: 'Delete preset',
+      bodyNodes: [note],
+      confirmLabel: 'Delete',
+      onConfirm: function () {
+        PresetStore.remove(name);
+        Dialog.close();
+        refreshPresetOptions();
+        inputs.preset.value = '';
+        updatePresetDeleteVisibility();
+      }
+    });
   });
 
   function makeFilename(p) {
@@ -563,6 +762,8 @@
     var size;
     if (p.shape === 'round') size = 'round-' + f(p.diameter) + 'mm';
     else if (p.shape === 'ellipse') size = 'oval-' + f(p.width) + 'x' + f(p.depth) + 'mm';
+    else if (p.shape === 'hexagon') size = 'hex-' + f(p.hexFlat) + 'mm';
+    else if (p.shape === 'rounded-square') size = 'rsquare-' + f(p.side) + 'mm-r' + f(p.cornerRadius);
     else size = 'square-' + f(p.side) + 'mm';
     var name = 'base-' + size + '-h' + f(p.height);
     if (p.bevel > 0) name += (p.bevelType === 'round' ? '-rb' : '-b') + f(p.bevel);
@@ -587,6 +788,8 @@
 
   /* ---------- initial state ---------- */
 
+  refreshPresetOptions();
+  updatePresetDeleteVisibility();
   updateShapeFields();
   updateEnabledStates();
   updateContrastReadout();

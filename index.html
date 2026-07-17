@@ -46,7 +46,12 @@
             <option value="square:40">40 mm square</option>
             <option value="square:50">50 mm square</option>
           </optgroup>
+          <optgroup label="My presets" id="my-presets-group" hidden></optgroup>
         </select>
+        <div class="field preset-actions">
+          <button id="preset-save" type="button" class="link-button">Save current as preset&hellip;</button>
+          <button id="preset-delete" type="button" class="link-button" hidden>Delete</button>
+        </div>
       </section>
 
       <section>
@@ -55,6 +60,8 @@
           <label><input type="radio" name="shape" value="round" checked><span><i class="fa-solid fa-circle" aria-hidden="true"></i> Round</span></label>
           <label><input type="radio" name="shape" value="ellipse"><span><i class="fa-solid fa-egg fa-rotate-90" aria-hidden="true"></i> Oval</span></label>
           <label><input type="radio" name="shape" value="square"><span><i class="fa-solid fa-square" aria-hidden="true"></i> Square</span></label>
+          <label><input type="radio" name="shape" value="hexagon"><span><i class="fa-solid fa-draw-polygon" aria-hidden="true"></i> Hexagon</span></label>
+          <label><input type="radio" name="shape" value="rounded-square"><span><i class="fa-solid fa-vector-square" aria-hidden="true"></i> Rounded square</span></label>
         </div>
         <div class="field" data-shape="round">
           <label for="diameter">Diameter (mm)</label>
@@ -68,9 +75,17 @@
           <label for="depth">Depth (mm)</label>
           <input type="number" id="depth" value="35" min="5" max="300" step="0.1">
         </div>
-        <div class="field" data-shape="square" hidden>
+        <div class="field" data-shape="square rounded-square" hidden>
           <label for="side">Side length (mm)</label>
           <input type="number" id="side" value="25" min="5" max="300" step="0.1">
+        </div>
+        <div class="field" data-shape="hexagon" hidden>
+          <label for="hex-flat">Width across flats (mm)</label>
+          <input type="number" id="hex-flat" value="25" min="5" max="300" step="0.1">
+        </div>
+        <div class="field" data-shape="rounded-square" hidden>
+          <label for="corner-radius">Corner radius (mm)</label>
+          <input type="number" id="corner-radius" value="3" min="0" max="150" step="0.1">
         </div>
         <div class="field">
           <label for="height">Height (mm)</label>
@@ -227,6 +242,8 @@
   <script src="js/geometry.js"></script>
   <script src="js/heightmap.js"></script>
   <script src="js/exporter.js"></script>
+  <script src="js/dialog.js"></script>
+  <script src="js/presets.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

@@ -515,6 +515,90 @@ footer .fa-solid {
   font-size: 10.5px;
 }
 
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 11, 14, 0.6);
+  padding: 20px;
+}
+
+.dialog-overlay[hidden] {
+  display: none;
+}
+
+.dialog-panel {
+  width: 100%;
+  max-width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.6);
+}
+
+.dialog-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.dialog-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dialog-body p {
+  margin: 0 0 10px;
+}
+
+.dialog-body input[type="text"] {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-actions button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.dialog-actions button:hover {
+  border-color: var(--muted);
+}
+
+.dialog-confirm {
+  border-color: transparent !important;
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
+  font-weight: 600;
+}
+
+.dialog-confirm:hover {
+  filter: brightness(1.08);
+}
+
 @media (max-width: 720px) {
   #app {
     flex-direction: column;

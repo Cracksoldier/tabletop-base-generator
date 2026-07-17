@@ -102,13 +102,23 @@ function angleListFor(p) {
   const extra = [];
   if (p.shape === 'square') {
     for (const c of [0.25, 0.75, 1.25, 1.75]) extra.push(c * Math.PI);
+  } else if (p.shape === 'hexagon') {
+    for (let i = 0; i < 6; i++) extra.push((1 / 6 + i / 3) * Math.PI);
+  } else if (p.shape === 'rounded-square') {
+    const h = p.side / 2;
+    const r = Math.max(0, Math.min(p.cornerRadius || 0, h));
+    const th0 = Math.atan2(h - r, h);
+    for (let i = 0; i < 4; i++) extra.push(i * (Math.PI / 2) + th0, (i + 1) * (Math.PI / 2) - th0);
   }
   if (p.slit && p.slit.enabled && p.slit.length > 0 && p.slit.width > 0) {
     const ca = Math.atan2(p.slit.width, p.slit.length);
     extra.push(ca, Math.PI - ca, Math.PI + ca, TAU - ca);
   }
   for (const c of extra) {
-    if (!angles.some(a => Math.abs(a - c) < 1e-9)) angles.push(c);
+    // normalize into [0, TAU): the rounded-square junction angle can land
+    // exactly on TAU at its rad=h circle limit, mirroring geometry.js
+    const cn = ((c % TAU) + TAU) % TAU;
+    if (!angles.some(a => Math.abs(a - cn) < 1e-9)) angles.push(cn);
   }
   angles.sort((a, b) => a - b);
   return angles;
@@ -129,29 +139,110 @@ function bandVol(C, rx1, ry1, z1, rx2, ry2, z2) {
   return (z2 - z1) / 6 * C * (rx1 * ry1 + 4 * ((rx1 + rx2) / 2) * ((ry1 + ry2) / 2) + rx2 * ry2);
 }
 
+// vertex-based rounded-square loop: mirrors geometry.js's sampleLoop branch
+// exactly (same chord approximation of the corner arcs the mesh uses), so
+// its shoelace area matches the actual triangulated mesh — the smooth
+// closed-form area 4h^2-(4-pi)*r^2 is what the mesh approaches but does not
+// hit exactly, the same discretization deficit 'round' has vs a true circle
+function roundedSquareLoop(h, r, angles) {
+  return angles.map(theta => {
+    const c = Math.cos(theta), s = Math.sin(theta);
+    const ax = Math.abs(c), ay = Math.abs(s);
+    const cc = h - r;
+    let t;
+    if (ay * h <= ax * cc) t = h / ax;
+    else if (ax * h <= ay * cc) t = h / ay;
+    else {
+      const B = cc * (ax + ay);
+      const Cq = 2 * cc * cc - r * r;
+      t = B + Math.sqrt(Math.max(0, B * B - Cq));
+    }
+    return [t * c, t * s];
+  });
+}
+function shoelaceArea(loop) {
+  let sum = 0;
+  for (let i = 0; i < loop.length; i++) {
+    const [x1, y1] = loop[i];
+    const [x2, y2] = loop[(i + 1) % loop.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return 0.5 * sum;
+}
+function lerpLoop(loop1, loop2, t) {
+  return loop1.map((p, i) => [p[0] + (loop2[i][0] - p[0]) * t, p[1] + (loop2[i][1] - p[1]) * t]);
+}
+// mirrors geometry.js's ringCornerRadius: a constant-mm offset shrinks both
+// h and r by the same delta (the arc center h-r is invariant), clamped to
+// [0, ringHalf] at the r=0 degenerate limit
+function ringCornerRadius(h, r, ringHalf) {
+  return Math.max(0, Math.min(r - (h - ringHalf), ringHalf));
+}
+// Simpson's rule on the true vertex-lerped midpoint polygon, not a fresh
+// support-function evaluation at averaged (h,r): the arc branch is
+// nonlinear in h,r, so that would NOT equal bridge()'s actual midpoint
+// cross-section. Any frustum with matching-vertex-count polygon ends joined
+// by straight lines has a quadratic-in-z area, so Simpson's rule (endpoints
+// + true lerped midpoint) integrates it exactly regardless of the support
+// function's shape.
+function roundedSquareFrustumVol(loop1, z1, loop2, z2) {
+  const mid = lerpLoop(loop1, loop2, 0.5);
+  const A1 = shoelaceArea(loop1), Am = shoelaceArea(mid), A2 = shoelaceArea(loop2);
+  return (z2 - z1) / 6 * (A1 + 4 * Am + A2);
+}
+
 function analyticVolume(p, magnetDropped) {
   const Cpoly = Cang(angleListFor(p));
-  const C = p.shape === 'square' ? 4 : Cpoly;
-  let rx, ry;
-  if (p.shape === 'round') rx = ry = p.diameter / 2;
-  else if (p.shape === 'ellipse') { rx = p.width / 2; ry = p.depth / 2; }
-  else rx = ry = p.side / 2;
   const bevel = p.bevel || 0;
   const wallTop = p.height - bevel;
-  let v = C * rx * ry * wallTop;
-  if (bevel > 0) {
-    if (p.bevelType === 'round') {
-      let pIns = 0, pZ = wallTop;
-      for (let k = 1; k <= FILLET_STEPS; k++) {
-        const last = k === FILLET_STEPS;
-        const phi = k * (Math.PI / 2) / FILLET_STEPS;
-        const ins = last ? bevel : bevel * (1 - Math.cos(phi));
-        const z = last ? p.height : wallTop + bevel * Math.sin(phi);
-        v += bandVol(C, rx - pIns, ry - pIns, pZ, rx - ins, ry - ins, z);
-        pIns = ins; pZ = z;
+  let v;
+  if (p.shape === 'rounded-square') {
+    const angles = angleListFor(p);
+    const h = p.side / 2;
+    const r = Math.max(0, Math.min(p.cornerRadius || 0, h));
+    const baseLoop = roundedSquareLoop(h, r, angles);
+    v = shoelaceArea(baseLoop) * wallTop;
+    if (bevel > 0) {
+      if (p.bevelType === 'round') {
+        let pLoop = baseLoop, pZ = wallTop;
+        for (let k = 1; k <= FILLET_STEPS; k++) {
+          const last = k === FILLET_STEPS;
+          const phi = k * (Math.PI / 2) / FILLET_STEPS;
+          const ins = last ? bevel : bevel * (1 - Math.cos(phi));
+          const z = last ? p.height : wallTop + bevel * Math.sin(phi);
+          const hh = h - ins, rr = ringCornerRadius(h, r, hh);
+          const loop = roundedSquareLoop(hh, rr, angles);
+          v += roundedSquareFrustumVol(pLoop, pZ, loop, z);
+          pLoop = loop; pZ = z;
+        }
+      } else {
+        const hh = h - bevel, rr = ringCornerRadius(h, r, hh);
+        const loop = roundedSquareLoop(hh, rr, angles);
+        v += roundedSquareFrustumVol(baseLoop, wallTop, loop, p.height);
       }
-    } else {
-      v += bandVol(C, rx, ry, wallTop, rx - bevel, ry - bevel, p.height);
+    }
+  } else {
+    const C = p.shape === 'square' ? 4 : p.shape === 'hexagon' ? 2 * Math.sqrt(3) : Cpoly;
+    let rx, ry;
+    if (p.shape === 'round') rx = ry = p.diameter / 2;
+    else if (p.shape === 'ellipse') { rx = p.width / 2; ry = p.depth / 2; }
+    else if (p.shape === 'hexagon') rx = ry = p.hexFlat / 2;
+    else rx = ry = p.side / 2;
+    v = C * rx * ry * wallTop;
+    if (bevel > 0) {
+      if (p.bevelType === 'round') {
+        let pIns = 0, pZ = wallTop;
+        for (let k = 1; k <= FILLET_STEPS; k++) {
+          const last = k === FILLET_STEPS;
+          const phi = k * (Math.PI / 2) / FILLET_STEPS;
+          const ins = last ? bevel : bevel * (1 - Math.cos(phi));
+          const z = last ? p.height : wallTop + bevel * Math.sin(phi);
+          v += bandVol(C, rx - pIns, ry - pIns, pZ, rx - ins, ry - ins, z);
+          pIns = ins; pZ = z;
+        }
+      } else {
+        v += bandVol(C, rx, ry, wallTop, rx - bevel, ry - bevel, p.height);
+      }
     }
   }
   if (p.magnet && p.magnet.enabled && !magnetDropped) {
@@ -177,13 +268,13 @@ const magnetVariants = [
 ];
 
 const cases = [];
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   for (const bv of bevelVariants) {
     for (const mv of magnetVariants) {
       cases.push({
         name: shape + ' bevel=' + bv.label + ' magnet=' + mv.label,
         exact: true, // safe offsets: analyticVolume applies verbatim
-        params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+        params: { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
                   height: 4, bevel: bv.bevel, bevelType: bv.bevelType, magnet: mv.magnet }
       });
     }
@@ -203,10 +294,10 @@ cases.push({ name: 'ellipse, magnet at far end',
             magnet: { enabled: true, diameter: 5, depth: 2, offsetX: 26, offsetY: 0 } } });
 // requested offsets far outside — the defensive support clamp must land the
 // hole somewhere valid; the exact volume still holds by translation invariance
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   cases.push({ name: shape + ', absurd requested offset (defensive clamp)',
     exact: true,
-    params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+    params: { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
               height: 4, bevel: 1, bevelType: 'round',
               magnet: { enabled: true, diameter: 5, depth: 2, offsetX: 1000, offsetY: -1000 } } });
 }
@@ -215,6 +306,18 @@ for (const shape of ['round', 'ellipse', 'square']) {
 cases.push({ name: 'square corner offset (inversion regression)',
   exact: true,
   params: { shape: 'square', side: 60, height: 6, bevel: 0,
+            magnet: { enabled: true, diameter: 20, depth: 2, offsetX: 18.5, offsetY: 18.5 } } });
+// hexagon-corner analogue: a large offset aimed straight at a hexagon vertex
+// (30 degrees, magnitude 30) exercises the same annulus non-inversion clamp
+cases.push({ name: 'hexagon corner offset (inversion regression)',
+  exact: true,
+  params: { shape: 'hexagon', hexFlat: 60, height: 6, bevel: 0,
+            magnet: { enabled: true, diameter: 20, depth: 2, offsetX: 25.98, offsetY: 15 } } });
+// rounded-square corner analogue: same offset as the square case, a small
+// fillet radius keeps the corner near-sharp so the offset still aims at it
+cases.push({ name: 'rounded-square corner offset (inversion regression)',
+  exact: true,
+  params: { shape: 'rounded-square', side: 60, cornerRadius: 3, height: 6, bevel: 0,
             magnet: { enabled: true, diameter: 20, depth: 2, offsetX: 18.5, offsetY: 18.5 } } });
 // recess ceiling rising into the bevel: offset must be clamped against the
 // bevel surface at ceiling height, not the footprint
@@ -229,14 +332,16 @@ cases.push({ name: 'deep magnet under bevel, offset to the rim',
 const slitDims = {
   round: { length: 20, width: 3 },
   ellipse: { length: 30, width: 4 },
-  square: { length: 14, width: 2 }
+  square: { length: 14, width: 2 },
+  hexagon: { length: 16, width: 2.5 },
+  'rounded-square': { length: 14, width: 2 }
 };
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   for (const bv of bevelVariants) {
     cases.push({
       name: shape + ' slit bevel=' + bv.label,
       exact: true,
-      params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+      params: { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
                 height: 4, bevel: bv.bevel, bevelType: bv.bevelType,
                 magnet: { enabled: false },
                 slit: { enabled: true, ...slitDims[shape] } }
@@ -247,13 +352,15 @@ for (const shape of ['round', 'ellipse', 'square']) {
 const slitMagnets = {
   round: { enabled: true, diameter: 5, depth: 2, offsetX: 0, offsetY: 6.5 },
   ellipse: { enabled: true, diameter: 5, depth: 2, offsetX: 12, offsetY: -8 },
-  square: { enabled: true, diameter: 4, depth: 2, offsetX: 0, offsetY: 7 }
+  square: { enabled: true, diameter: 4, depth: 2, offsetX: 0, offsetY: 7 },
+  hexagon: { enabled: true, diameter: 4, depth: 2, offsetX: 0, offsetY: 8 },
+  'rounded-square': { enabled: true, diameter: 4, depth: 2, offsetX: 0, offsetY: 7 }
 };
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   cases.push({
     name: shape + ' slit + clearing offset magnet',
     exact: true,
-    params: { shape, diameter: 32, width: 60, depth: 35, side: 25,
+    params: { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
               height: 4, bevel: 0, bevelType: 'flat',
               magnet: slitMagnets[shape],
               slit: { enabled: true, ...slitDims[shape] } }
@@ -303,6 +410,17 @@ cases.push({ name: 'wide slit near square corners',
   params: { shape: 'square', side: 40, height: 4, bevel: 1, bevelType: 'flat',
             magnet: { enabled: false },
             slit: { enabled: true, length: 30, width: 24 } } });
+// wide slit reaching toward the hexagon vertices, under a flat bevel
+cases.push({ name: 'wide slit near hexagon corners',
+  params: { shape: 'hexagon', hexFlat: 40, height: 4, bevel: 1, bevelType: 'flat',
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 26, width: 14 } } });
+// wide slit reaching toward the rounded-square corners (small fillet radius
+// keeps the corner near-sharp), under a flat bevel
+cases.push({ name: 'wide slit near rounded-square corners',
+  params: { shape: 'rounded-square', side: 40, cornerRadius: 3, height: 4, bevel: 1, bevelType: 'flat',
+            magnet: { enabled: false },
+            slit: { enabled: true, length: 30, width: 24 } } });
 // oversized request: the defensive clamp must land somewhere valid
 cases.push({ name: 'slit longer than the base (defensive clamp)',
   params: { shape: 'round', diameter: 32, height: 4, bevel: 0,
@@ -341,8 +459,57 @@ const polyVol = C96 * 16 * 16 * 4;
 check('round volume matches 96-gon prism', Math.abs(rd.volume - polyVol) < 1e-6,
   'got ' + rd.volume + ' expected ' + polyVol);
 
+// hexagon no bevel no magnet: exact closed-form area 2*sqrt(3)*apothem^2
+const hx = cases.find(c => c.name === 'hexagon bevel=none magnet=off');
+const hexVol = 2 * Math.sqrt(3) * 14 * 14 * 4; // hexFlat=28 -> apothem=14, height=4
+check('hexagon volume matches closed-form area', Math.abs(hx.volume - hexVol) < 1e-6,
+  'got ' + hx.volume + ' expected ' + hexVol);
+
+// rounded-square (small radius) no bevel no magnet: the mesh only chords the
+// corner arcs (the same discretization deficit 'round' has vs. a true
+// circle), so the exact comparison is against the polygon area of the same
+// angle-list-sampled loop, not the smooth closed-form 4h^2-(4-pi)*r^2 (which
+// the mesh approaches but does not hit exactly). side=25 -> h=12.5, r=3.
+const rs = cases.find(c => c.name === 'rounded-square bevel=none magnet=off');
+const rsAngles = angleListFor(rs.params);
+const rsPolyVol = shoelaceArea(roundedSquareLoop(12.5, 3, rsAngles)) * 4;
+check('rounded-square volume matches polygon-discretized area', Math.abs(rs.volume - rsPolyVol) < 1e-6,
+  'got ' + rs.volume + ' expected ' + rsPolyVol);
+
+// rounded-square at the rad=0 limit must exactly match the plain square, and
+// at the rad=h limit must exactly match a plain circle of radius h (same
+// 96-gon polygon deficit as the 'round' shape, not the exact continuous area)
+cases.push({ name: 'rounded-square radius=0 (square limit)', exact: true,
+  params: { shape: 'rounded-square', side: 25, cornerRadius: 0, height: 4, bevel: 0,
+            magnet: { enabled: false } } });
+cases.push({ name: 'rounded-square radius=h (circle limit)', exact: true,
+  params: { shape: 'rounded-square', side: 25, cornerRadius: 12.5, height: 4, bevel: 0,
+            magnet: { enabled: false } } });
+cases.push({ name: 'rounded-square radius=h, bevel=round (circle limit)', exact: true,
+  params: { shape: 'rounded-square', side: 25, cornerRadius: 12.5, height: 4, bevel: 1, bevelType: 'round',
+            magnet: { enabled: false } } });
+for (const c of cases.slice(-3)) {
+  const positions = BaseGeometry.buildPositions(c.params);
+  const r = analyze(positions);
+  check(c.name + ': manifold', r.badEdges === 0, r.badEdges + ' bad edges');
+  check(c.name + ': no degenerate tris', r.degenerate === 0, r.degenerate + ' degenerate');
+  check(c.name + ': horizontal facets oriented', r.badHoriz === 0, r.badHoriz + ' misoriented');
+  const want = analyticVolume(c.params);
+  check(c.name + ': exact volume', Math.abs(r.volume - want) < 1e-6,
+    'got ' + r.volume + ' expected ' + want);
+  c.volume = r.volume;
+}
+const rs0 = cases.find(c => c.name === 'rounded-square radius=0 (square limit)');
+const sqLimitVol = 25 * 25 * 4;
+check('rounded-square radius=0 matches plain square volume',
+  Math.abs(rs0.volume - sqLimitVol) < 1e-6, 'got ' + rs0.volume + ' expected ' + sqLimitVol);
+const rsH = cases.find(c => c.name === 'rounded-square radius=h (circle limit)');
+const circleLimitVol = C96 * 12.5 * 12.5 * 4;
+check('rounded-square radius=h matches plain circle (96-gon) volume',
+  Math.abs(rsH.volume - circleLimitVol) < 1e-6, 'got ' + rsH.volume + ' expected ' + circleLimitVol);
+
 // monotonicity: flat chamfer removes more than the fillet, both remove material
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   const v = (bevel, mag) => cases.find(c =>
     c.name === shape + ' bevel=' + bevel + ' magnet=' + mag).volume;
   check(shape + ': bevel removes material', v('flat', 'off') < v('none', 'off'));
@@ -354,7 +521,7 @@ for (const shape of ['round', 'ellipse', 'square']) {
 }
 
 // slit monotonicity: the through-cut removes material on every shape
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   const plain = cases.find(c => c.name === shape + ' bevel=none magnet=off').volume;
   const slit = cases.find(c => c.name === shape + ' slit bevel=none').volume;
   check(shape + ': slit removes material', slit < plain,
@@ -506,9 +673,9 @@ const flat = () => 0;
 const bump = (x, y) => 1.5 * Math.exp(-(x * x + y * y) / 40); // smooth radial hill
 
 // displace=0 reproduces the flat top exactly -> volume equals the flat base
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   for (const bv of bevelVariants) {
-    const base = { shape, diameter: 32, width: 60, depth: 35, side: 25,
+    const base = { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
       height: 4, bevel: bv.bevel, bevelType: bv.bevelType, magnet: { enabled: false } };
     const flatPos = BaseGeometry.buildPositions({ ...base,
       terrain: { enabled: true, rings: 24, displace: flat } });
@@ -541,10 +708,10 @@ check('terrain: constant added volume within flat-rim bound',
   (v1 - v0) > 0 && (v1 - v0) < topArea * 1, (v1 - v0) + ' vs ' + topArea);
 
 // topological matrix: terrain x shape x bevel x magnet with a real relief map
-for (const shape of ['round', 'ellipse', 'square']) {
+for (const shape of ['round', 'ellipse', 'square', 'hexagon', 'rounded-square']) {
   for (const bv of bevelVariants) {
     for (const mv of magnetVariants) {
-      const p = { shape, diameter: 32, width: 60, depth: 35, side: 25,
+      const p = { shape, diameter: 32, width: 60, depth: 35, side: 25, hexFlat: 28, cornerRadius: 3,
         height: 6, bevel: bv.bevel, bevelType: bv.bevelType, magnet: mv.magnet,
         terrain: { enabled: true, rings: 24, displace: bump } };
       const r = analyze(BaseGeometry.buildPositions(p));

@@ -3,12 +3,13 @@
 A static web app that generates 3D-printable bases for Warhammer (and other
 tabletop) miniatures and exports them as STL, ready for slicing.
 
-![Shapes](https://img.shields.io/badge/shapes-round%20%7C%20oval%20%7C%20square-blue)
+![Shapes](https://img.shields.io/badge/shapes-round%20%7C%20oval%20%7C%20square%20%7C%20hexagon%20%7C%20rounded%20square-blue)
 
 ## Features
 
 - **Live 3D preview** (three.js) with orbit/zoom/pan controls
-- **Shapes:** round, oval (elliptic) and square
+- **Shapes:** round, oval (elliptic), square, hexagon (flat-top, sized by
+  width across flats) and rounded square (independent corner radius)
 - **Optional bevel** on the top edge — flat chamfer or rounded
   (quarter-circle fillet)
 - **Optional round magnet recess** in the bottom (diameter, depth and X/Y
@@ -24,8 +25,12 @@ tabletop) miniatures and exports them as STL, ready for slicing.
   centre-cropped to the base's aspect ratio ("cover"), so it never stretches on
   oval bases. Loaded entirely in-browser (no upload); coexists with the bevel
   and the magnet, and is mutually exclusive with the slit
-- **Presets** for common base sizes (25/28.5/32/40/50/60/80/100 mm round,
-  60×35 … 120×92 mm oval, 20/25/40/50 mm square)
+- **Built-in presets** for common base sizes (25/28.5/32/40/50/60/80/100 mm
+  round, 60×35 … 120×92 mm oval, 20/25/40/50 mm square)
+- **Custom presets:** save the full current configuration (shape, dimensions,
+  bevel, magnet, slit — everything except terrain) under a name of your
+  choice; presets persist in the browser's `localStorage`, so they survive
+  reloads on the same machine and are listed alongside the built-in ones
 - **Binary STL export** in millimetres, Z-up — drops straight into your slicer
 - Runs **entirely in the browser**: no backend, no build step, no network
   requests (three.js and Font Awesome are vendored locally)
@@ -74,6 +79,10 @@ No build workflow is required — the repository is served as-is.
   to top. When slit and magnet coexist, the bottom face has two holes and is
   triangulated by keyhole-bridged ear clipping over the very same sampled
   loops. The result is watertight (manifold) by construction in all cases.
+  The rounded-square corner is a true straight-edge/circular-arc boundary
+  (not an approximation): at corner radius 0 it's bit-identical to the plain
+  square, and at corner radius = half the side it's bit-identical to a
+  circle of that radius.
 - The **oval bevel** is an approximation: the inset outline is an ellipse
   with reduced radii rather than a true offset curve, so the chamfer width
   varies slightly around the perimeter. For typical bevels (≤ 2 mm) this is
@@ -105,7 +114,9 @@ css/style.css         UI styling
 js/geometry.js        procedural mesh construction (no THREE dependency in core)
 js/heightmap.js       height-map decode + pure displacement sampler (BaseGeometry-free)
 js/exporter.js        binary STL writer + download
-js/main.js            scene, controls, UI wiring, validation, presets
+js/dialog.js          reusable modal (save/overwrite/delete prompts, no native prompt()/confirm())
+js/presets.js         localStorage-backed custom preset store (PresetStore)
+js/main.js            scene, controls, UI wiring, validation, preset save/load
 vendor/               three.js r147 (three.min.js, OrbitControls.js, license)
 vendor/fontawesome/   Font Awesome 6.7.2 Free, solid subset (css, webfonts, license)
 ```

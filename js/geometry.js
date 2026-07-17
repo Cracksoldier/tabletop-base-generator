@@ -4,10 +4,11 @@
  * All dimensions are millimetres, the model is built Z-up (footprint in the
  * XY plane, height along +Z) so the exported STL needs no transformation.
  *
- * No CSG: every supported outline (circle, ellipse, square) is star-convex
- * around the origin, so all loops are sampled at one shared angle list and
- * bridged index-to-index. The magnet recess is built directly into the
- * bottom face, which keeps the mesh watertight by construction.
+ * No CSG: every supported outline (circle, ellipse, square, hexagon,
+ * rounded square) is star-convex around the origin, so all loops are
+ * sampled at one shared angle list and bridged index-to-index. The magnet
+ * recess is built directly into the bottom face, which keeps the mesh
+ * watertight by construction.
  */
 window.BaseGeometry = (function () {
   'use strict';
@@ -22,7 +23,7 @@ window.BaseGeometry = (function () {
    * corner angles atan2(width, length) and their reflections, so the slit
    * loop has exact corners on every base shape.
    */
-  function buildAngleList(shape, slit, segments) {
+  function buildAngleList(shape, slit, segments, h, cornerRadius) {
     segments = segments || SEGMENTS;
     var angles = [];
     var i;
@@ -31,13 +32,27 @@ window.BaseGeometry = (function () {
     if (shape === 'square') {
       var corners = [0.25, 0.75, 1.25, 1.75];
       for (i = 0; i < corners.length; i++) extra.push(corners[i] * Math.PI);
+    } else if (shape === 'hexagon') {
+      for (i = 0; i < 6; i++) extra.push((1 / 6 + i / 3) * Math.PI);
+    } else if (shape === 'rounded-square') {
+      /* Straight-edge/arc junction angle; degenerates gracefully at both
+         limits (r=0 -> the square's 45-degree corners, r=h -> the axis
+         angles of a plain circle) so no special-casing is needed. */
+      var th0 = Math.atan2(h - cornerRadius, h);
+      for (i = 0; i < 4; i++) {
+        extra.push(i * (Math.PI / 2) + th0, (i + 1) * (Math.PI / 2) - th0);
+      }
     }
     if (slit && slit.length > 0 && slit.width > 0) {
       var ca = Math.atan2(slit.width, slit.length);
       extra.push(ca, Math.PI - ca, Math.PI + ca, TAU - ca);
     }
     for (i = 0; i < extra.length; i++) {
-      var c = extra[i];
+      /* normalize into [0, TAU) first: the rounded-square junction formula
+         can land exactly on TAU at its rad=h circle limit, which must
+         dedupe against the uniform grid's 0 rather than sit a hair away
+         from it as a near-duplicate vertex (a degenerate sliver triangle). */
+      var c = ((extra[i] % TAU) + TAU) % TAU;
       var present = angles.some(function (a) { return Math.abs(a - c) < 1e-9; });
       if (!present) angles.push(c);
     }
@@ -53,7 +68,7 @@ window.BaseGeometry = (function () {
    * r(t) = rx / max(|cos t|, |sin t|) so corners land exactly on the
    * inserted 45-degree angles. cx/cy translate the loop (default origin).
    */
-  function sampleLoop(shape, rx, ry, angles, cx, cy) {
+  function sampleLoop(shape, rx, ry, angles, cx, cy, cornerRadius) {
     cx = cx || 0;
     cy = cy || 0;
     var pts = new Float64Array(angles.length * 2);
@@ -65,6 +80,39 @@ window.BaseGeometry = (function () {
         var m = Math.max(Math.abs(c), Math.abs(s));
         x = rx * c / m;
         y = ry * s / m;
+      } else if (shape === 'hexagon') {
+        var theta = angles[i];
+        var k = Math.round(theta / (Math.PI / 3));
+        var delta = theta - k * (Math.PI / 3);
+        var rM = rx / Math.cos(delta);
+        x = rM * c;
+        y = rM * s;
+      } else if (shape === 'rounded-square') {
+        /* rx === ry (square footprint); cc is the arc-center offset. On a
+           straight edge r(t) = h/max(ax,ay), same as plain square; on the
+           corner, r(t) is the larger root of the arc's quadratic (the
+           smaller root is the ray's near miss on the far side of the arc
+           center, not a point on the corner itself — verified against both
+           the theta0 junction, where it must match the straight-edge value,
+           and the rad=h limit, where it must equal a plain circle of
+           radius h). Both branches reduce exactly to square (rad=0) or a
+           circle (rad=h). */
+        var h = rx;
+        var rad = cornerRadius || 0;
+        var ax = Math.abs(c), ay = Math.abs(s);
+        var cc = h - rad;
+        var tt;
+        if (ay * h <= ax * cc) {
+          tt = h / ax;
+        } else if (ax * h <= ay * cc) {
+          tt = h / ay;
+        } else {
+          var B = cc * (ax + ay);
+          var Cq = 2 * cc * cc - rad * rad;
+          tt = B + Math.sqrt(Math.max(0, B * B - Cq));
+        }
+        x = tt * c;
+        y = tt * s;
       } else {
         x = rx * c;
         y = ry * s;
@@ -197,16 +245,21 @@ window.BaseGeometry = (function () {
    * rings and the center apex carry the terrain relief. Watertight by
    * construction — same ring-bridging mechanism as the bevel bands.
    */
-  function buildTerrainTop(out, shape, rx, ry, bevel, angles, H, terrain, topLoop) {
+  function buildTerrainTop(out, shape, rx, ry, bevel, angles, H, terrain, topLoop, cornerRadius) {
     var RINGS = terrain.rings;
     var disp = terrain.displace;
     var trx = rx - bevel, tryy = ry - bevel;
+    /* Terrain rings scale rx/ry radially by a uniform factor f (not a
+       constant-mm offset like the bevel), so the corner radius at the
+       bevel-inset base scales by that same f — a different, simpler rule
+       than ringCornerRadius's Minkowski-erosion one. */
+    var baseRad = bevel > 1e-6 ? ringCornerRadius(rx, cornerRadius || 0, trx) : (cornerRadius || 0);
     var n = angles.length;
     var prev = null, prevZ = null;
     for (var k = 1; k <= RINGS; k++) {
       var last = (k === RINGS);
       var f = k / RINGS;
-      var ring = last ? topLoop : sampleLoop(shape, trx * f, tryy * f, angles);
+      var ring = last ? topLoop : sampleLoop(shape, trx * f, tryy * f, angles, 0, 0, baseRad * f);
       var z = new Float64Array(n);
       var i;
       if (last) {
@@ -369,12 +422,34 @@ window.BaseGeometry = (function () {
     if (params.shape === 'ellipse') {
       return { rx: params.width / 2, ry: params.depth / 2 };
     }
+    if (params.shape === 'hexagon') {
+      var a = params.hexFlat / 2;
+      return { rx: a, ry: a };
+    }
     var h = params.side / 2;
     return { rx: h, ry: h };
   }
 
   function clampBevel(params, rx, ry) {
     return Math.max(0, Math.min(params.bevel || 0, params.height - 0.05, rx - 0.1, ry - 0.1));
+  }
+
+  /* Base (un-inset) fillet radius for the rounded-square shape, clamped to [0, h]. */
+  function clampCornerRadius(params, h) {
+    if (params.shape !== 'rounded-square') return 0;
+    return Math.max(0, Math.min(params.cornerRadius || 0, h));
+  }
+
+  /*
+   * Fillet radius for a ring inset by a constant Delta = h - ringHalf from the
+   * base rounded square (h, r). A constant-mm offset of a rounded square
+   * shrinks both the half-side and the corner radius by the same Delta (the
+   * arc center h-r is invariant under this transform), so this is an exact
+   * offset, not an approximation — verified at both limits (Delta=0 keeps r;
+   * Delta=r degenerates the ring to a plain square corner).
+   */
+  function ringCornerRadius(h, r, ringHalf) {
+    return Math.max(0, Math.min(r - (h - ringHalf), ringHalf));
   }
 
   /* Radial inset of the top bevel surface at height z (0 at or below the wall top). */
@@ -394,10 +469,12 @@ window.BaseGeometry = (function () {
    * contained slits whose bridged quads still fold over — the same class of
    * trap as the offset-magnet clamp, so the triangle conditions are explicit.
    */
-  function slitOk(shape, rx, ry, bevel, hl, hw, margin) {
-    var angles = buildAngleList(shape, { length: 2 * hl, width: 2 * hw });
-    var outer = sampleLoop(shape, rx, ry, angles);
-    var top = bevel > 1e-6 ? sampleLoop(shape, rx - bevel, ry - bevel, angles) : outer;
+  function slitOk(shape, rx, ry, bevel, hl, hw, margin, cornerRadius) {
+    cornerRadius = cornerRadius || 0;
+    var angles = buildAngleList(shape, { length: 2 * hl, width: 2 * hw }, undefined, rx, cornerRadius);
+    var outer = sampleLoop(shape, rx, ry, angles, 0, 0, cornerRadius);
+    var topRad = bevel > 1e-6 ? ringCornerRadius(rx, cornerRadius, rx - bevel) : cornerRadius;
+    var top = bevel > 1e-6 ? sampleLoop(shape, rx - bevel, ry - bevel, angles, 0, 0, topRad) : outer;
     var slit = sampleSlitLoop(hl, hw, angles);
     var n = angles.length;
     var EPS = 1e-6; /* same slack as offsetScale: keeps boundary triangles above the degeneracy threshold */
@@ -444,15 +521,16 @@ window.BaseGeometry = (function () {
   function clampSlitSize(params, length, width, margin) {
     var r = resolveRadii(params);
     var bevel = clampBevel(params, r.rx, r.ry);
+    var cornerRadius = clampCornerRadius(params, r.rx);
     var L = Math.max(0, Math.min(length, 2 * (r.rx - bevel - margin)));
     var W = Math.max(0, Math.min(width, 2 * (r.ry - bevel - margin)));
     if (L <= 0 || W <= 0) return { length: 0, width: 0, scaled: true };
     var hl = L / 2, hw = W / 2;
-    if (!slitOk(params.shape, r.rx, r.ry, bevel, hl, hw, margin)) {
+    if (!slitOk(params.shape, r.rx, r.ry, bevel, hl, hw, margin, cornerRadius)) {
       var lo = 0, hi = 1;
       for (var it = 0; it < 40; it++) {
         var mid = (lo + hi) / 2;
-        if (slitOk(params.shape, r.rx, r.ry, bevel, hl * mid, hw * mid, margin)) lo = mid;
+        if (slitOk(params.shape, r.rx, r.ry, bevel, hl * mid, hw * mid, margin, cornerRadius)) lo = mid;
         else hi = mid;
       }
       if (lo <= 1e-6) return { length: 0, width: 0, scaled: true };
@@ -540,7 +618,9 @@ window.BaseGeometry = (function () {
     var m = params.magnet || {};
     var inset = bevelInsetAtZ(bevel, params.bevelType, params.height - bevel, m.depth || 0);
     if (inset <= 0) return outer;
-    return sampleLoop(params.shape, rx - inset, ry - inset, angles);
+    var cornerRadius = clampCornerRadius(params, rx);
+    var ringRad = ringCornerRadius(rx, cornerRadius, rx - inset);
+    return sampleLoop(params.shape, rx - inset, ry - inset, angles, 0, 0, ringRad);
   }
 
   /*
@@ -555,6 +635,7 @@ window.BaseGeometry = (function () {
   function clampMagnetOffset(params, ox, oy, margin) {
     var r = resolveRadii(params);
     var bevel = clampBevel(params, r.rx, r.ry);
+    var cornerRadius = clampCornerRadius(params, r.rx);
     var m = params.magnet || {};
     var hr = (m.diameter || 0) / 2;
     var s = params.slit || {};
@@ -568,8 +649,8 @@ window.BaseGeometry = (function () {
 
     if (!slit) {
       if (!ox && !oy) return { x: 0, y: 0, scaled: false, pushed: false, valid: true };
-      var angles0 = buildAngleList(params.shape, null, segments);
-      var outer0 = sampleLoop(params.shape, r.rx, r.ry, angles0);
+      var angles0 = buildAngleList(params.shape, null, segments, r.rx, cornerRadius);
+      var outer0 = sampleLoop(params.shape, r.rx, r.ry, angles0, 0, 0, cornerRadius);
       var eff0 = magnetEffectiveOutline(params, r.rx, r.ry, bevel, angles0, outer0);
       var t0 = Math.min(1, offsetScale(outer0, eff0, angles0, hr, ox, oy, margin));
       return { x: ox * t0, y: oy * t0, scaled: t0 < 1 - 1e-12, pushed: false, valid: true };
@@ -579,8 +660,8 @@ window.BaseGeometry = (function () {
     var dLen = Math.hypot(ox, oy);
     var tLow = slitExitDistance(slit.length / 2, slit.width / 2,
       hr + margin, ox / dLen, oy / dLen) / dLen;
-    var angles = buildAngleList(params.shape, slit, segments);
-    var outer = sampleLoop(params.shape, r.rx, r.ry, angles);
+    var angles = buildAngleList(params.shape, slit, segments, r.rx, cornerRadius);
+    var outer = sampleLoop(params.shape, r.rx, r.ry, angles, 0, 0, cornerRadius);
     var eff = magnetEffectiveOutline(params, r.rx, r.ry, bevel, angles, outer);
     var tHigh = offsetScale(outer, eff, angles, hr, ox, oy, margin);
     if (tLow > tHigh + 1e-12) {
@@ -602,8 +683,9 @@ window.BaseGeometry = (function () {
    * THREE dependency so it can be tested headlessly.
    *
    * params: {
-   *   shape: 'round' | 'ellipse' | 'square',
-   *   diameter, width, depth, side,           // per-shape footprint (mm)
+   *   shape: 'round' | 'ellipse' | 'square' | 'hexagon' | 'rounded-square',
+   *   diameter, width, depth, side, hexFlat,  // per-shape footprint (mm)
+   *   cornerRadius,                           // rounded-square fillet radius (mm)
    *   height, bevel,                          // bevel 0 = none
    *   bevelType: 'flat' | 'round',            // default 'flat'
    *   magnet: { enabled, diameter, depth, offsetX, offsetY },
@@ -617,6 +699,7 @@ window.BaseGeometry = (function () {
 
     var H = params.height;
     var bevel = clampBevel(params, rx, ry);
+    var cornerRadius = clampCornerRadius(params, rx);
     var wallTop = H - bevel;
 
     /* Terrain wins over the slit: the two are mutually exclusive (v1), and the
@@ -635,8 +718,8 @@ window.BaseGeometry = (function () {
     }
 
     var segments = segmentsFor(params);
-    var angles = buildAngleList(shape, slit, segments);
-    var outer = sampleLoop(shape, rx, ry, angles);
+    var angles = buildAngleList(shape, slit, segments, rx, cornerRadius);
+    var outer = sampleLoop(shape, rx, ry, angles, 0, 0, cornerRadius);
     var slitLoop = slit ? sampleSlitLoop(slit.length / 2, slit.width / 2, angles) : null;
     var positions = [];
 
@@ -721,14 +804,16 @@ window.BaseGeometry = (function () {
           /* endpoints set exactly so the model is exactly H tall and welds are bit-identical */
           var ins = last ? bevel : bevel * (1 - Math.cos(phi));
           var z = last ? H : wallTop + bevel * Math.sin(phi);
-          var ring = sampleLoop(shape, rx - ins, ry - ins, angles);
+          var ringRad = ringCornerRadius(rx, cornerRadius, rx - ins);
+          var ring = sampleLoop(shape, rx - ins, ry - ins, angles, 0, 0, ringRad);
           bridge(positions, prev, prevZ, ring, z, false);
           prev = ring;
           prevZ = z;
         }
         topLoop = prev;
       } else {
-        var inset = sampleLoop(shape, rx - bevel, ry - bevel, angles);
+        var insetRad = ringCornerRadius(rx, cornerRadius, rx - bevel);
+        var inset = sampleLoop(shape, rx - bevel, ry - bevel, angles, 0, 0, insetRad);
         bridge(positions, outer, wallTop, inset, H, false);
         topLoop = inset;
       }
@@ -736,7 +821,7 @@ window.BaseGeometry = (function () {
     if (slit) {
       annulus(positions, slitLoop, topLoop, H, true);
     } else if (terrain) {
-      buildTerrainTop(positions, shape, rx, ry, bevel, angles, H, terrain, topLoop);
+      buildTerrainTop(positions, shape, rx, ry, bevel, angles, H, terrain, topLoop, cornerRadius);
     } else {
       fan(positions, topLoop, H, false);
     }
