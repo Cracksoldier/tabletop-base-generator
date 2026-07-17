@@ -244,6 +244,8 @@ button:focus-visible {
 
 .segmented label {
   flex: 1;
+  min-width: 0;
+  display: flex;
   cursor: pointer;
 }
 
@@ -254,9 +256,14 @@ button:focus-visible {
 }
 
 .segmented span {
-  display: block;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 7px 0;
+  padding: 7px 4px;
   font-size: 13px;
   background: var(--panel-2);
   border-left: 1px solid var(--border);

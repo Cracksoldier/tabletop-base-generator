@@ -11,7 +11,7 @@
     presetGroup: el('my-presets-group'),
     presetSave: el('preset-save'),
     presetDelete: el('preset-delete'),
-    shapeRadios: document.querySelectorAll('input[name="shape"]'),
+    shape: el('shape'),
     diameter: el('diameter'),
     width: el('width'),
     depth: el('depth'),
@@ -199,10 +199,7 @@
   }
 
   function currentShape() {
-    for (var i = 0; i < inputs.shapeRadios.length; i++) {
-      if (inputs.shapeRadios[i].checked) return inputs.shapeRadios[i].value;
-    }
-    return 'round';
+    return inputs.shape.value;
   }
 
   function currentBevelType() {
@@ -553,24 +550,20 @@
   inputs.axesThrough.addEventListener('change', updateAxes);
   updateAxes();
 
-  for (var i = 0; i < inputs.shapeRadios.length; i++) {
-    inputs.shapeRadios[i].addEventListener('change', function () {
-      inputs.preset.value = '';
-      updatePresetDeleteVisibility();
-      updateShapeFields();
-      regenerate();
-    });
-  }
+  inputs.shape.addEventListener('change', function () {
+    inputs.preset.value = '';
+    updatePresetDeleteVisibility();
+    updateShapeFields();
+    regenerate();
+  });
 
   /* Shared by the built-in shape:dims presets and applyFullConfig — sets the
-     shape radio and whichever dimension fields are present on cfg (the
+     shape select and whichever dimension fields are present on cfg (the
      built-in handler passes only the fields its shape uses; a saved custom
      preset always has all of them, since snapshotInputs reads every field
      regardless of the shape active when it was saved). */
   function applyShapeDims(cfg) {
-    for (var i = 0; i < inputs.shapeRadios.length; i++) {
-      inputs.shapeRadios[i].checked = inputs.shapeRadios[i].value === cfg.shape;
-    }
+    inputs.shape.value = cfg.shape;
     if (cfg.diameter !== undefined) inputs.diameter.value = cfg.diameter;
     if (cfg.width !== undefined) inputs.width.value = cfg.width;
     if (cfg.depth !== undefined) inputs.depth.value = cfg.depth;
