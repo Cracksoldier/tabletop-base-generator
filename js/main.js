@@ -267,8 +267,8 @@
 
     if (shape === 'rounded-square') {
       var maxCorner = p.side / 2;
-      var reqCorner = Math.max(0, num(inputs.cornerRadius, 0));
-      p.cornerRadius = Math.min(reqCorner, maxCorner);
+      var reqCorner = num(inputs.cornerRadius, 0);
+      p.cornerRadius = clamp(reqCorner, 0, maxCorner);
       if (reqCorner > maxCorner + 1e-9) {
         hints.push('Corner radius limited to ' + p.cornerRadius.toFixed(1) + ' mm by the base size.');
       }
@@ -628,24 +628,33 @@
     inputs.slitWidth.value = cfg.slitWidth;
   }
 
+  /* Custom entries are packed as "custom:" + name (not name:dims like the
+     built-in presets); extracted with slice() rather than split(':') so a
+     name containing a colon round-trips. */
+  var CUSTOM_PREFIX = 'custom:';
+  function isCustomPresetValue(value) {
+    return value.indexOf(CUSTOM_PREFIX) === 0;
+  }
+  function customPresetName(value) {
+    return value.slice(CUSTOM_PREFIX.length);
+  }
+
   /* Rebuilds the "My presets" optgroup from storage; called on load and
-     after every save/delete. Custom entries are packed as "custom:" + name
-     (not name:dims like the built-in presets), extracted with slice() below
-     rather than split(':') so a name containing a colon round-trips. */
+     after every save/delete. */
   function refreshPresetOptions() {
     inputs.presetGroup.innerHTML = '';
     var list = PresetStore.list();
     inputs.presetGroup.hidden = list.length === 0;
     list.forEach(function (p) {
       var opt = document.createElement('option');
-      opt.value = 'custom:' + p.name;
+      opt.value = CUSTOM_PREFIX + p.name;
       opt.textContent = p.name;
       inputs.presetGroup.appendChild(opt);
     });
   }
 
   function updatePresetDeleteVisibility() {
-    inputs.presetDelete.hidden = inputs.preset.value.indexOf('custom:') !== 0;
+    inputs.presetDelete.hidden = !isCustomPresetValue(inputs.preset.value);
   }
 
   inputs.preset.addEventListener('change', function () {
@@ -653,8 +662,8 @@
     updatePresetDeleteVisibility();
     if (!value) return;
 
-    if (value.indexOf('custom:') === 0) {
-      var name = value.slice('custom:'.length);
+    if (isCustomPresetValue(value)) {
+      var name = customPresetName(value);
       var cfg = PresetStore.get(name);
       if (!cfg) return;
       applyFullConfig(cfg);
@@ -730,7 +739,7 @@
       return;
     }
     refreshPresetOptions();
-    inputs.preset.value = 'custom:' + name;
+    inputs.preset.value = CUSTOM_PREFIX + name;
     updatePresetDeleteVisibility();
   }
 
@@ -738,8 +747,8 @@
 
   inputs.presetDelete.addEventListener('click', function () {
     var value = inputs.preset.value;
-    if (value.indexOf('custom:') !== 0) return;
-    var name = value.slice('custom:'.length);
+    if (!isCustomPresetValue(value)) return;
+    var name = customPresetName(value);
 
     var note = document.createElement('p');
     note.textContent = 'Delete the preset "' + name + '"? This cannot be undone.';
