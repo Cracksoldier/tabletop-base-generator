@@ -85,7 +85,10 @@ const FILLET_STEPS = 8; // mirrors geometry.js
 function segmentsFor(p) {
   const t = p.terrain || {};
   if (!(t.enabled && typeof t.displace === 'function' && t.rings > 0)) return 96;
-  let s = Math.max(96, Math.min(384, Math.round(t.rings) * 4));
+  let s, cap;
+  if (t.segments > 0) { s = Math.round(t.segments); cap = 1024; }
+  else { s = Math.round(t.rings) * 4; cap = 384; }
+  s = Math.max(96, Math.min(cap, s));
   return s - (s % 4);
 }
 
@@ -547,6 +550,26 @@ check('terrain: max custom resolution (256 rings) manifold',
   rMax.badEdges === 0 && rMax.degenerate === 0 && rMax.badHoriz === 0 && rMax.volume > 0,
   JSON.stringify({ badEdges: rMax.badEdges, degenerate: rMax.degenerate,
     badHoriz: rMax.badHoriz, tris: rMax.triCount }));
+// explicit angular segment override (custom) decouples angular from radial
+// density: same rings, more segments -> more triangles, still manifold, and
+// displace=0 still reproduces the flat base exactly at the overridden density
+const segBase = { shape: 'ellipse', width: 60, depth: 35, height: 4, bevel: 1,
+  bevelType: 'round', magnet: { enabled: true, diameter: 5, depth: 2 } };
+const segAuto = analyze(BaseGeometry.buildPositions({ ...segBase,
+  terrain: { enabled: true, rings: 24, displace: bump } }));
+const segHi = analyze(BaseGeometry.buildPositions({ ...segBase,
+  terrain: { enabled: true, rings: 24, segments: 512, displace: bump } }));
+check('terrain: segment override raises angular density independently',
+  segHi.badEdges === 0 && segHi.degenerate === 0 && segHi.badHoriz === 0 &&
+  segHi.triCount > segAuto.triCount,
+  JSON.stringify({ auto: segAuto.triCount, override: segHi.triCount }));
+const segFlatBase = { shape: 'round', diameter: 32, height: 4, bevel: 0, magnet: { enabled: false } };
+const segFlat = analyze(BaseGeometry.buildPositions({ ...segFlatBase,
+  terrain: { enabled: true, rings: 24, segments: 300, displace: () => 0 } }));
+check('terrain: segment override displace(0) equals flat base',
+  Math.abs(segFlat.volume - analyticVolume({ ...segFlatBase,
+    terrain: { enabled: true, rings: 24, segments: 300, displace: () => 0 } })) < 1e-6,
+  'got ' + segFlat.volume);
 
 // STL exporter: fake BufferGeometry over one case
 const pos = BaseGeometry.buildPositions(cases[0].params);

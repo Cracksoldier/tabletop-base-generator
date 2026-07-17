@@ -169,12 +169,17 @@
           <label for="terrain-res-custom">Rings (radial)</label>
           <input type="number" id="terrain-res-custom" value="64" min="4" max="256" step="1" disabled>
         </div>
+        <div class="field" id="terrain-seg-custom-field" hidden>
+          <label for="terrain-seg-custom">Segments (angular)</label>
+          <input type="number" id="terrain-seg-custom" value="256" min="12" max="1024" step="4" disabled>
+        </div>
         <p class="note">
           Resolution is the number of concentric rings from the centre out to
           the rim: Low 12, Medium 24, High 48. More rings mean finer relief and
           more triangles. The base outline is subdivided more finely to match
           (roughly four segments per ring, up to 384), so relief sharpens in
-          both directions. High counts can produce large STL files.
+          both directions. With Custom you can also set the angular segment
+          count directly. High counts can produce large STL files.
         </p>
       </section>
 

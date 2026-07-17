@@ -342,13 +342,22 @@ window.BaseGeometry = (function () {
    * square there while staying a multiple of 4 for clean square-corner
    * alignment). Floored at the default 96 and capped so the whole mesh — walls,
    * bevel and bottom all sample this same list — stays a sane triangle count.
-   * Non-terrain builds are unchanged at SEGMENTS.
+   * An explicit terrain.segments overrides the ring-derived count (custom
+   * resolution); it is likewise floored at SEGMENTS and rounded to a multiple
+   * of 4. Non-terrain builds are unchanged at SEGMENTS.
    */
   function segmentsFor(params) {
     var t = params.terrain || {};
     if (!(t.enabled && typeof t.displace === 'function' && t.rings > 0)) return SEGMENTS;
-    var s = Math.round(t.rings) * 4;
-    s = Math.max(SEGMENTS, Math.min(384, s));
+    var s, cap;
+    if (t.segments > 0) {
+      s = Math.round(t.segments); /* explicit custom override */
+      cap = 1024;
+    } else {
+      s = Math.round(t.rings) * 4; /* auto: ~4 segments per ring */
+      cap = 384;
+    }
+    s = Math.max(SEGMENTS, Math.min(cap, s));
     return s - (s % 4); /* keep divisible by 4 so square corners coincide */
   }
 

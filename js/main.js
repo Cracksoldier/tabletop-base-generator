@@ -33,6 +33,8 @@
     terrainResRadios: document.querySelectorAll('input[name="terrain-res"]'),
     terrainResCustom: el('terrain-res-custom'),
     terrainResCustomField: el('terrain-res-custom-field'),
+    terrainSegCustom: el('terrain-seg-custom'),
+    terrainSegCustomField: el('terrain-seg-custom-field'),
     terrainThumb: el('terrain-thumb'),
     terrainClear: el('terrain-clear'),
     terrainPreview: document.querySelector('.terrain-preview'),
@@ -152,6 +154,12 @@
     return parseInt(mode, 10);
   }
 
+  /* Custom angular segments override; 0 means "derive from the ring count". */
+  function currentTerrainSegments() {
+    if (currentTerrainResMode() !== 'custom') return 0;
+    return clamp(Math.round(num(inputs.terrainSegCustom, 256)), 12, 1024);
+  }
+
   /* Footprint half-extents, matching resolveRadii in geometry.js. */
   function footprintRadii(p) {
     if (p.shape === 'round') return { rx: p.diameter / 2, ry: p.diameter / 2 };
@@ -211,6 +219,7 @@
         p.terrain = {
           enabled: true,
           rings: currentTerrainRings(),
+          segments: currentTerrainSegments(),
           relief: relief,
           displace: HeightMap.makeDisplace(buf, {
             rx: tr.rx, ry: tr.ry,
@@ -376,6 +385,8 @@
     var customMode = currentTerrainResMode() === 'custom';
     inputs.terrainResCustomField.hidden = !customMode;
     inputs.terrainResCustom.disabled = !terrainUsable || !customMode;
+    inputs.terrainSegCustomField.hidden = !customMode;
+    inputs.terrainSegCustom.disabled = !terrainUsable || !customMode;
   }
 
   function onAnyInput() {
@@ -391,7 +402,7 @@
     inputs.magnetOffsetX, inputs.magnetOffsetY,
     inputs.slitEnabled, inputs.slitLength, inputs.slitWidth,
     inputs.terrainEnabled, inputs.terrainRelief, inputs.terrainBase,
-    inputs.terrainInvert, inputs.terrainResCustom
+    inputs.terrainInvert, inputs.terrainResCustom, inputs.terrainSegCustom
   ];
   plainInputs.forEach(function (input) {
     input.addEventListener('input', onAnyInput);
