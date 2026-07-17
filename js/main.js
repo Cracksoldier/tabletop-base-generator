@@ -40,7 +40,9 @@
     terrainThumb: el('terrain-thumb'),
     terrainClear: el('terrain-clear'),
     terrainPreview: document.querySelector('.terrain-preview'),
-    meshColor: el('mesh-color')
+    meshColor: el('mesh-color'),
+    axesEnabled: el('axes-enabled'),
+    axesThrough: el('axes-through')
   };
   var hintsEl = el('hints');
   var statsEl = el('stats');
@@ -86,6 +88,10 @@
 
   /* ---------- axis orientation markers (X red, Y green, Z blue) ---------- */
 
+  /* Materials whose depthTest/renderOrder flip when "visible through the base"
+     is toggled. Labels always ignore depth so their text stays legible. */
+  var axesDepthMaterials = [];
+
   /* A camera-facing text label drawn on a canvas, so it needs no font file or
      network access (works from file://). */
   function axisLabel(text, color, pos) {
@@ -119,15 +125,30 @@
     { dir: new THREE.Vector3(0, 0, 1), color: 0x4d90e0, label: 'Z', css: '#4d90e0' }
   ];
   AXIS_DEFS.forEach(function (a) {
-    var end = a.dir.clone().multiplyScalar(AXIS_LEN);
-    var line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), end]),
-      new THREE.LineBasicMaterial({ color: a.color })
+    var arrow = new THREE.ArrowHelper(
+      a.dir, new THREE.Vector3(0, 0, 0), AXIS_LEN, a.color,
+      AXIS_LEN * 0.22, /* head length */
+      AXIS_LEN * 0.12  /* head width */
     );
-    axes.add(line);
+    axesDepthMaterials.push(arrow.line.material, arrow.cone.material);
+    axes.add(arrow);
     axes.add(axisLabel(a.label, a.css, a.dir.clone().multiplyScalar(AXIS_LEN + 4)));
   });
   scene.add(axes);
+
+  /* Show/hide the whole marker, and optionally draw the arrows through the
+     base (depthTest off + high renderOrder, like the labels always are). */
+  function updateAxes() {
+    axes.visible = inputs.axesEnabled.checked;
+    var through = inputs.axesThrough.checked;
+    axesDepthMaterials.forEach(function (m) {
+      m.depthTest = !through;
+      m.needsUpdate = true;
+    });
+    axes.traverse(function (obj) {
+      if (obj.isLine || obj.isMesh) obj.renderOrder = through ? 998 : 0;
+    });
+  }
 
   var material = new THREE.MeshStandardMaterial({
     color: 0x99a3b8,
@@ -504,6 +525,11 @@
   inputs.meshColor.addEventListener('input', function () {
     material.color.set(inputs.meshColor.value);
   });
+
+  /* Preview-only: axis marker visibility and see-through mode. */
+  inputs.axesEnabled.addEventListener('change', updateAxes);
+  inputs.axesThrough.addEventListener('change', updateAxes);
+  updateAxes();
 
   for (var i = 0; i < inputs.shapeRadios.length; i++) {
     inputs.shapeRadios[i].addEventListener('change', function () {
