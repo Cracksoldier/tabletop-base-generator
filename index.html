@@ -55,14 +55,21 @@
       </section>
 
       <section>
-        <label class="section-label" for="shape"><i class="fa-solid fa-shapes" aria-hidden="true"></i> Shape</label>
-        <select id="shape">
-          <option value="round" selected>Round</option>
-          <option value="ellipse">Oval</option>
-          <option value="square">Square</option>
-          <option value="hexagon">Hexagon</option>
-          <option value="rounded-square">Rounded square</option>
-        </select>
+        <label class="section-label" for="shape-toggle"><i class="fa-solid fa-shapes" aria-hidden="true"></i> Shape</label>
+        <div class="icon-select" id="shape-select">
+          <button type="button" id="shape-toggle" class="icon-select-toggle" aria-haspopup="listbox" aria-expanded="false">
+            <i class="fa-solid fa-circle icon-select-toggle-icon" aria-hidden="true"></i>
+            <span class="icon-select-toggle-label">Round</span>
+            <i class="fa-solid fa-chevron-down icon-select-caret" aria-hidden="true"></i>
+          </button>
+          <ul class="icon-select-list" role="listbox" hidden>
+            <li role="option" data-value="round" aria-selected="true" tabindex="0"><i class="fa-solid fa-circle" aria-hidden="true"></i> Round</li>
+            <li role="option" data-value="ellipse" aria-selected="false" tabindex="-1"><i class="fa-solid fa-egg fa-rotate-90" aria-hidden="true"></i> Oval</li>
+            <li role="option" data-value="square" aria-selected="false" tabindex="-1"><i class="fa-solid fa-square" aria-hidden="true"></i> Square</li>
+            <li role="option" data-value="hexagon" aria-selected="false" tabindex="-1"><i class="fa-solid fa-draw-polygon" aria-hidden="true"></i> Hexagon</li>
+            <li role="option" data-value="rounded-square" aria-selected="false" tabindex="-1"><i class="fa-solid fa-vector-square" aria-hidden="true"></i> Rounded square</li>
+          </ul>
+        </div>
         <div class="field" data-shape="round">
           <label for="diameter">Diameter (mm)</label>
           <input type="number" id="diameter" value="32" min="5" max="300" step="0.1">

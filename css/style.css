@@ -234,6 +234,98 @@ button:focus-visible {
   outline-offset: 1px;
 }
 
+.icon-select {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.icon-select-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.icon-select-toggle:hover {
+  border-color: var(--muted);
+}
+
+.icon-select-toggle-icon {
+  width: 14px;
+  text-align: center;
+  color: var(--accent);
+}
+
+.icon-select-toggle-label {
+  flex: 1;
+  margin-left: 8px;
+}
+
+.icon-select-caret {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.icon-select-list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.icon-select-list[hidden] {
+  display: none;
+}
+
+.icon-select-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.icon-select-list li .fa-solid {
+  width: 14px;
+  text-align: center;
+  opacity: 0.75;
+}
+
+.icon-select-list li:hover {
+  background: var(--panel);
+}
+
+.icon-select-list li[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.icon-select-list li[aria-selected="true"] .fa-solid {
+  opacity: 1;
+}
+
+.icon-select-list li:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .segmented {
   display: flex;
   border: 1px solid var(--border);

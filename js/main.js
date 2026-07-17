@@ -6,12 +6,116 @@
 
   function el(id) { return document.getElementById(id); }
 
+  /*
+   * Custom icon dropdown for Shape. Native <select><option> elements ignore
+   * author CSS and can't render icon-font glyphs in the popup list, so this
+   * builds a listbox by hand. It exposes the same surface main.js's plain
+   * inputs use elsewhere (.value get/set, addEventListener('change', fn))
+   * so every existing call site keeps working unchanged.
+   */
+  function createIconSelect(rootId) {
+    var root = el(rootId);
+    var toggle = root.querySelector('.icon-select-toggle');
+    var toggleIcon = toggle.querySelector('.icon-select-toggle-icon');
+    var toggleLabel = toggle.querySelector('.icon-select-toggle-label');
+    var list = root.querySelector('.icon-select-list');
+    var options = Array.prototype.slice.call(list.querySelectorAll('[role="option"]'));
+    var changeListeners = [];
+    var value = options.length ? options[0].getAttribute('data-value') : '';
+
+    function optionFor(v) {
+      for (var i = 0; i < options.length; i++) {
+        if (options[i].getAttribute('data-value') === v) return options[i];
+      }
+      return null;
+    }
+
+    function syncToggle() {
+      var opt = optionFor(value) || options[0];
+      toggleIcon.className = opt.querySelector('.fa-solid').className + ' icon-select-toggle-icon';
+      toggleLabel.textContent = opt.textContent.trim();
+      options.forEach(function (o) {
+        var selected = o === opt;
+        o.setAttribute('aria-selected', selected ? 'true' : 'false');
+        o.tabIndex = selected ? 0 : -1;
+      });
+    }
+
+    function isOpen() { return !list.hidden; }
+
+    function open() {
+      list.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+      var opt = optionFor(value);
+      if (opt) opt.focus();
+    }
+
+    function close() {
+      list.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    function select(v, fromUser) {
+      value = v;
+      syncToggle();
+      if (fromUser) changeListeners.forEach(function (fn) { fn(); });
+    }
+
+    toggle.addEventListener('click', function () {
+      if (isOpen()) close(); else open();
+    });
+
+    options.forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        select(opt.getAttribute('data-value'), true);
+        close();
+        toggle.focus();
+      });
+    });
+
+    list.addEventListener('keydown', function (e) {
+      var idx = options.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        options[Math.min(options.length - 1, idx < 0 ? 0 : idx + 1)].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        options[Math.max(0, idx < 0 ? 0 : idx - 1)].focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (idx >= 0) {
+          select(options[idx].getAttribute('data-value'), true);
+          close();
+          toggle.focus();
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        toggle.focus();
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!root.contains(e.target)) close();
+    });
+
+    syncToggle();
+
+    return {
+      get value() { return value; },
+      set value(v) { select(v, false); },
+      addEventListener: function (type, fn) {
+        if (type === 'change') changeListeners.push(fn);
+      }
+    };
+  }
+
   var inputs = {
     preset: el('preset'),
     presetGroup: el('my-presets-group'),
     presetSave: el('preset-save'),
     presetDelete: el('preset-delete'),
-    shape: el('shape'),
+    shape: createIconSelect('shape-select'),
     diameter: el('diameter'),
     width: el('width'),
     depth: el('depth'),
